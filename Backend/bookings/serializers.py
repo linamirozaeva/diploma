@@ -105,7 +105,8 @@ class BookingCreateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Booking
-        fields = ('screening', 'seat_ids')
+        fields = ('id', 'screening', 'seat_ids')  
+        read_only_fields = ('id', 'booking_code', 'created_at')
     
     def validate(self, data):
         """

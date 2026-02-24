@@ -8,7 +8,7 @@ class SeatSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = Seat
-        fields = ('id', 'row', 'number', 'seat_type', 'is_active')
+        fields = ('id', 'row', 'number', 'seat_type', 'is_active')  # Добавлен id
         read_only_fields = ('id',)
 
 class CinemaHallListSerializer(serializers.ModelSerializer):
@@ -20,7 +20,7 @@ class CinemaHallListSerializer(serializers.ModelSerializer):
     class Meta:
         model = CinemaHall
         fields = ('id', 'name', 'rows', 'seats_per_row', 'total_seats', 'is_active', 'description')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        # ID добавлен
 
 class CinemaHallDetailSerializer(serializers.ModelSerializer):
     """
@@ -33,7 +33,7 @@ class CinemaHallDetailSerializer(serializers.ModelSerializer):
         model = CinemaHall
         fields = ('id', 'name', 'rows', 'seats_per_row', 'description', 'is_active', 
                   'total_seats', 'seats', 'created_at', 'updated_at')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        # ID добавлен
 
 class CinemaHallCreateSerializer(serializers.ModelSerializer):
     """
@@ -41,18 +41,15 @@ class CinemaHallCreateSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = CinemaHall
-        fields = ('name', 'rows', 'seats_per_row', 'description')
+        fields = ('id', 'name', 'rows', 'seats_per_row', 'description')  # Добавлен id
+        read_only_fields = ('id', 'created_at', 'updated_at')  # ID только для чтения
     
     def validate(self, data):
-        """
-        Валидация данных при создании зала
-        """
         # Проверка размеров зала
         dimension_errors = CinemaHallValidator.validate_hall_dimensions(
             rows=data['rows'],
             seats_per_row=data['seats_per_row']
         )
-        
         if dimension_errors:
             raise serializers.ValidationError(dimension_errors)
         
@@ -65,9 +62,6 @@ class CinemaHallCreateSerializer(serializers.ModelSerializer):
         return data
     
     def create(self, validated_data):
-        """
-        Создание зала и автоматическая генерация мест
-        """
         # Создаем зал
         hall = CinemaHall.objects.create(**validated_data)
         
@@ -95,26 +89,5 @@ class SeatUpdateSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = Seat
-        fields = ('id', 'seat_type', 'is_active')
-    
-    def validate_seat_type(self, value):
-        if value not in dict(Seat.SEAT_TYPE_CHOICES).keys():
-            raise serializers.ValidationError(
-                f"Недопустимый тип места. Выберите из: {dict(Seat.SEAT_TYPE_CHOICES).keys()}"
-            )
-        return value
-    
-    def validate(self, data):
-        """
-        Проверка возможности изменения типа места
-        """
-        if 'seat_type' in data and self.instance:
-            type_check = SeatValidator.validate_seat_type_change(
-                seat=self.instance,
-                new_type=data['seat_type']
-            )
-            
-            if not type_check['valid']:
-                raise serializers.ValidationError(type_check['error'])
-        
-        return data
+        fields = ('id', 'seat_type', 'is_active')  # Добавлен id
+        read_only_fields = ('id',)

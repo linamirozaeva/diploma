@@ -3,32 +3,22 @@ from .models import Movie
 from .validators import MovieValidator
 
 class MovieListSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор для списка фильмов
-    """
     class Meta:
         model = Movie
-        fields = ('id', 'title', 'description', 'duration', 'poster', 'release_date', 'director')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        fields = ['id', 'title', 'description', 'duration', 'poster', 'release_date', 'director']
 
 class MovieDetailSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор для детальной информации о фильме
-    """
     class Meta:
         model = Movie
-        fields = ('id', 'title', 'description', 'duration', 'poster', 'release_date', 
-                  'director', 'cast', 'is_active', 'created_at', 'updated_at')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        fields = ['id', 'title', 'description', 'duration', 'poster', 'release_date', 
+                  'director', 'cast', 'is_active', 'created_at', 'updated_at']
 
 class MovieCreateUpdateSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор для создания и обновления фильмов
-    """
     class Meta:
         model = Movie
-        fields = ('title', 'description', 'duration', 'poster', 'release_date', 
-                  'director', 'cast', 'is_active')
+        fields = ['id', 'title', 'description', 'duration', 'poster', 'release_date', 
+                  'director', 'cast', 'is_active']
+        read_only_fields = ['id']
     
     def validate_title(self, value):
         """

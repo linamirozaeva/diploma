@@ -53,8 +53,7 @@ class MovieViewSet(viewsets.ModelViewSet):
         return queryset
     
     def get_serializer_class(self):
-        """Выбор сериализатора"""
-        if self.action in ['create', 'update', 'partial_update']:
+        if self.action == 'create':
             return MovieCreateUpdateSerializer
         elif self.action == 'retrieve':
             return MovieDetailSerializer
@@ -135,7 +134,13 @@ class MovieViewSet(viewsets.ModelViewSet):
             'total_bookings': total_bookings,
             'total_revenue': total_revenue
         })    
-        """
+        
+    queryset = Movie.objects.all()
+    permission_classes = [IsAdminOrReadOnly]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['title', 'director', 'description', 'cast']
+    ordering_fields = ['title', 'release_date', 'duration', 'created_at']
+    """
     ViewSet для управления фильмами
     
     list: Получить список всех фильмов
@@ -145,12 +150,7 @@ class MovieViewSet(viewsets.ModelViewSet):
     partial_update: Частично обновить фильм (только админ)
     destroy: Удалить фильм (только админ)
     """
-    queryset = Movie.objects.all()
-    permission_classes = [IsAdminOrReadOnly]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['title', 'director', 'description', 'cast']
-    ordering_fields = ['title', 'release_date', 'duration', 'created_at']
-    
+
     def get_queryset(self):
         """Фильтрация фильмов по параметрам запроса"""
         queryset = super().get_queryset()
@@ -192,6 +192,12 @@ class MovieViewSet(viewsets.ModelViewSet):
         elif self.action == 'retrieve':
             return MovieDetailSerializer
         return MovieListSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     @action(detail=False, methods=['get'])
     def now_showing(self, request):
