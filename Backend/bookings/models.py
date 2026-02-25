@@ -10,9 +10,6 @@ from screenings.models import Screening
 from cinemas.models import Seat
 
 class Booking(models.Model):
-    """
-    Модель бронирования билетов
-    """
     STATUS_CHOICES = (
         ('pending', 'Ожидает подтверждения'),
         ('confirmed', 'Подтверждено'),
@@ -43,7 +40,8 @@ class Booking(models.Model):
     booking_code = models.CharField(
         max_length=50, 
         unique=True, 
-        verbose_name='Код бронирования'
+        verbose_name='Код бронирования',
+        db_index=True  # Краткая форма индекса
     )
     price = models.PositiveIntegerField(
         verbose_name='Цена',
@@ -74,7 +72,23 @@ class Booking(models.Model):
         verbose_name = 'Бронирование'
         verbose_name_plural = 'Бронирования'
         ordering = ['-created_at']
-        unique_together = ('screening', 'seat')  # Запрет двойного бронирования
+        unique_together = ('screening', 'seat')
+        indexes = [
+            # Индекс для поиска по пользователю и статусу (my_bookings)
+            models.Index(fields=['user', 'status'], name='booking_user_status_idx'),
+            
+            # Индекс для поиска по сеансу (список броней на сеанс)
+            models.Index(fields=['screening'], name='booking_screening_idx'),
+            
+            # Индекс для поиска по дате создания
+            models.Index(fields=['created_at'], name='booking_created_idx'),
+            
+            # Составной индекс для проверки доступности мест
+            models.Index(fields=['screening', 'seat', 'status'], name='booking_availability_idx'),
+            
+            # Индекс для поиска по статусу
+            models.Index(fields=['status'], name='booking_status_idx'),
+        ]
     
     def __str__(self):
         return f"Бронь {self.booking_code} - {self.seat}"

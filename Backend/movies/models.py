@@ -16,6 +16,22 @@ class Movie(models.Model):
         verbose_name = 'Фильм'
         verbose_name_plural = 'Фильмы'
         ordering = ['-created_at']
+        indexes = [
+            # Индекс для поиска по названию (часто используется)
+            models.Index(fields=['title'], name='movie_title_idx'),
+            
+            # Индекс для сортировки по дате выхода
+            models.Index(fields=['release_date'], name='movie_release_date_idx'),
+            
+            # Индекс для фильтрации активных фильмов
+            models.Index(fields=['is_active'], name='movie_active_idx'),
+            
+            # Составной индекс для now_showing/coming_soon
+            models.Index(fields=['release_date', 'is_active'], name='movie_release_active_idx'),
+            
+            # Индекс для поиска по режиссеру
+            models.Index(fields=['director'], name='movie_director_idx'),
+        ]
     
     def __str__(self):
         return self.title
