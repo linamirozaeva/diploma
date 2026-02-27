@@ -47,23 +47,13 @@ function AppRoutes() {
       {/* Public routes */}
       <Route path="/" element={<><Header /><HomePage /></>} />
       <Route path="/movie/:id" element={<><Header /><MoviePage /></>} />
-      <Route path="/hall/:screeningId" element={<><Header /><HallPage /></>} />
-      <Route path="/payment" element={<><Header /><PaymentPage /></>} />
-      <Route path="/ticket/:bookingId" element={<><Header /><TicketPage /></>} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      
-      {/* Admin routes */}
-      <Route path="/admin" element={
-        <PrivateRoute adminOnly>
-          <AdminLayout />
-        </PrivateRoute>
-      }>
-        <Route index element={<AdminDashboard />} />
-        <Route path="halls" element={<AdminHalls />} />
-        <Route path="movies" element={<AdminMovies />} />
-        <Route path="screenings" element={<AdminScreenings />} />
-      </Route>
+      <Route path="/hall/:screeningId" element={
+        <>
+          <Header />
+          <HallPage />
+        </>
+      } />
+      {/* ... остальные маршруты */}
     </Routes>
   );
 }
