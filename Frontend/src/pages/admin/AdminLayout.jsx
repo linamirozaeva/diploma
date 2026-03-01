@@ -37,7 +37,7 @@ const AdminLayout = () => {
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-bold">Администраторррская</h1>
+              <h1 className="text-xl font-bold">Администраторская</h1>
               <span className="text-sm opacity-75">{user?.username}</span>
             </div>
             <button

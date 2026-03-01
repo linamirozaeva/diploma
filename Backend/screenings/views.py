@@ -4,138 +4,221 @@ from rest_framework.response import Response
 from django.utils import timezone
 from django.db.models import Q, Count, Sum
 from datetime import datetime, timedelta
-from config.permissions import IsAdminUser
+from config.permissions import IsAdminOrReadOnly, IsAdminUser
 from .models import Screening
 from .serializers import (
     ScreeningListSerializer, ScreeningDetailSerializer,
     ScreeningCreateUpdateSerializer
 )
 from cinemas.models import Seat
-from bookings.models import Booking
+# Не импортируем Booking здесь, будем импортировать внутри функций
 
-class IsAdminOrReadOnly(permissions.BasePermission):
-    """
-    Разрешение: админы могут всё, остальные только чтение
-    """
-    def has_permission(self, request, view):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return request.user and request.user.is_authenticated and request.user.is_admin_user
 
 class ScreeningViewSet(viewsets.ModelViewSet):
     """
     ViewSet для управления сеансами
+    
+    list: Все пользователи (включая гостей)
+    retrieve: Все пользователи
+    available_seats: Все пользователи
+    create: Только админы
+    update: Только админы
+    partial_update: Только админы
+    destroy: Только админы
+    stats: Только админы
     """
     queryset = Screening.objects.all()
-    serializer_class = ScreeningListSerializer
-    
-    def get_permissions(self):
-        """Динамическое определение прав доступа"""
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            # Только админы могут изменять
-            from rest_framework.permissions import IsAdminUser
-            return [IsAdminUser()]
-        # Остальные могут просматривать
-        from rest_framework.permissions import AllowAny
-        return [AllowAny()]
-    
+    permission_classes = [IsAdminOrReadOnly]  # Админы могут всё, остальные только чтение
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['movie__title', 'hall__name']
+    ordering_fields = ['start_time', 'price_standard', 'created_at']
+
     def get_queryset(self):
-        """Фильтрация сеансов"""
+        """Фильтрация сеансов по параметрам запроса"""
         queryset = super().get_queryset()
         
-        # Все видят только активные сеансы
-        is_active = self.request.query_params.get('is_active')
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        else:
+        # Все видят только активные сеансы (кроме админов в админке)
+        if not self.request.query_params.get('include_inactive'):
             queryset = queryset.filter(is_active=True)
         
         # Фильтр по дате
         date = self.request.query_params.get('date')
         if date:
-            from datetime import datetime
             try:
                 date_obj = datetime.strptime(date, '%Y-%m-%d').date()
                 queryset = queryset.filter(start_time__date=date_obj)
             except ValueError:
                 pass
         
-        return queryset.order_by('start_time')
-    
+        # Фильтр по фильму
+        movie_id = self.request.query_params.get('movie')
+        if movie_id:
+            queryset = queryset.filter(movie_id=movie_id)
+        
+        # Фильтр по залу
+        hall_id = self.request.query_params.get('hall')
+        if hall_id:
+            queryset = queryset.filter(hall_id=hall_id)
+        
+        # Только будущие сеансы
+        future_only = self.request.query_params.get('future_only')
+        if future_only and future_only.lower() == 'true':
+            queryset = queryset.filter(start_time__gte=timezone.now())
+        
+        return queryset.select_related('movie', 'hall').order_by('start_time')
+
+    def get_serializer_class(self):
+        """Выбор сериализатора в зависимости от действия"""
+        if self.action in ['create', 'update', 'partial_update']:
+            return ScreeningCreateUpdateSerializer
+        elif self.action == 'retrieve':
+            return ScreeningDetailSerializer
+        return ScreeningListSerializer
+
     def create(self, request, *args, **kwargs):
-        """Создание сеанса"""
-        try:
-            # Проверка прав
-            if not request.user or not request.user.is_staff:
-                return Response(
-                    {'detail': 'Только администраторы могут создавать сеансы'},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            
-            # Создаём объект
-            screening = Screening.objects.create(
-                movie_id=request.data.get('movie'),
-                hall_id=request.data.get('hall'),
-                start_time=request.data.get('start_time'),
-                end_time=request.data.get('end_time'),
-                price_standard=request.data.get('price_standard', 250),
-                price_vip=request.data.get('price_vip', 350),
-                is_active=True
-            )
-            
-            # Возвращаем созданный объект
-            serializer = self.get_serializer(screening)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-            
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
+        """Создание сеанса (только для админов)"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Проверка пересечений сеансов выполняется в сериализаторе
+        self.perform_create(serializer)
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['get'])
     def available_seats(self, request, pk=None):
-        """Информация о доступных местах"""
+        """
+        Информация о доступных местах на сеанс
+        GET /api/screenings/{id}/available_seats/
+        Доступно всем пользователям
+        """
         screening = self.get_object()
         
-        all_seats = Seat.objects.filter(hall=screening.hall, is_active=True)
+        # Получаем все места в зале
+        all_seats = Seat.objects.filter(hall=screening.hall, is_active=True).order_by('row', 'number')
+        
+        # Получаем занятые места
+        from bookings.models import Booking
         booked_seats = Booking.objects.filter(
             screening=screening,
-            status__in=['confirmed', 'pending']
+            status='confirmed'
         ).values_list('seat_id', flat=True)
         
         result = []
         for seat in all_seats:
             result.append({
-                'id': seat.id,
+                'seat_id': seat.id,
                 'row': seat.row,
                 'number': seat.number,
                 'seat_type': seat.seat_type,
-                'status': 'booked' if seat.id in booked_seats else 'available',
+                'is_available': seat.id not in booked_seats,
                 'price': screening.price_vip if seat.seat_type == 'vip' else screening.price_standard
             })
         
-        return Response({
-            'screening_id': screening.id,
-            'seats': result
-        })
-    
+        return Response(result)
+
     @action(detail=True, methods=['post'])
-    def check_seats(self, request, pk=None):
-        """Проверить доступность мест"""
-        screening = self.get_object()
-        seat_ids = request.data.get('seat_ids', [])
+    def book_seats(self, request, pk=None):
+        """
+        Забронировать места на сеанс
+        POST /api/screenings/{id}/book_seats/
+        Только для авторизованных пользователей
+        """
+        from bookings.models import Booking  # ← ВАЖНО: импорт внутри функции!
+        import uuid
         
+        screening = self.get_object()
+        
+        # Проверка авторизации
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Необходимо авторизоваться'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Проверка, что сеанс еще не начался
+        if screening.start_time < timezone.now():
+            return Response(
+                {'error': 'Нельзя забронировать билеты на прошедший сеанс'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        seat_ids = request.data.get('seat_ids', [])
+        if not seat_ids:
+            return Response(
+                {'error': 'Не выбраны места'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверяем, что места существуют в этом зале
+        seats = Seat.objects.filter(
+            id__in=seat_ids,
+            hall=screening.hall,
+            is_active=True
+        )
+        
+        if len(seats) != len(seat_ids):
+            return Response(
+                {'error': 'Некоторые места не найдены или недоступны'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверяем, что места свободны
         booked_seats = Booking.objects.filter(
             screening=screening,
             seat_id__in=seat_ids,
-            status__in=['confirmed', 'pending']
-        ).values_list('seat_id', flat=True)
+            status='confirmed'
+        ).exists()
         
         if booked_seats:
-            return Response({
-                'available': False,
-                'booked_seats': list(booked_seats)
-            })
+            return Response(
+                {'error': 'Некоторые места уже заняты'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-        return Response({'available': True})
+        # Создаем бронирования
+        bookings = []
+        for seat in seats:
+            booking = Booking.objects.create(
+                screening=screening,
+                user=request.user,
+                seat=seat,
+                booking_code=str(uuid.uuid4())[:8].upper(),
+                status='confirmed'
+            )
+            bookings.append(booking)
+        
+        from bookings.serializers import BookingListSerializer as BookingSerializer
+        serializer = BookingSerializer(bookings, many=True)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAdminUser])
+    def stats(self, request, pk=None):
+        """
+        Статистика по сеансу
+        GET /api/screenings/{id}/stats/
+        Только для админов
+        """
+        from bookings.models import Booking
+        
+        screening = self.get_object()
+        
+        total_seats = screening.hall.total_seats
+        booked_seats = Booking.objects.filter(
+            screening=screening,
+            status='confirmed'
+        ).count()
+        
+        revenue = Booking.objects.filter(
+            screening=screening,
+            status='confirmed'
+        ).aggregate(total=Sum('price'))['total'] or 0
+        
+        return Response({
+            'screening_id': screening.id,
+            'total_seats': total_seats,
+            'booked_seats': booked_seats,
+            'available_seats': total_seats - booked_seats,
+            'revenue': revenue,
+            'occupancy_percentage': round((booked_seats / total_seats * 100), 2) if total_seats > 0 else 0
+        })

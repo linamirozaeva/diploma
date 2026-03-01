@@ -167,15 +167,19 @@ const AdminMovies = () => {
 
       {/* Список фильмов */}
       <div className="grid grid-cols-1 gap-4">
-        {movies.map(movie => (
+        {movies.map((movie) => (
           <div key={movie.id} className="bg-white rounded-lg shadow-lg p-4 hover:shadow-xl transition">
             <div className="flex gap-4">
+              {/* ===== КАРТИНКА: poster_admin.jpg ===== */}
+              {/* Файл: poster_admin.jpg (тот же, что и poster1_client.jpg) */}
+              {/* Описание: Постер фильма в административной панели */}
+              {/* Путь: из БД или /src/assets/poster_admin.jpg (заглушка) */}
               <img
-                src={movie.poster_url || '/src/assets/no-poster.jpg'}
+                src={movie.poster_url || '/src/assets/poster_admin.jpg'}
                 alt={movie.title}
                 className="w-24 h-32 object-cover rounded"
                 onError={(e) => {
-                  e.target.src = '/src/assets/no-poster.jpg';
+                  e.target.src = '/src/assets/poster_admin.jpg';
                 }}
               />
               

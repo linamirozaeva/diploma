@@ -1,0 +1,45 @@
+:root {
+    /* Основные цвета */
+    --color-primary: #16A6AF;
+    --color-secondary: #63536C;
+    --color-accent: #F9953A;
+    --color-dark: #171D24;
+    --color-light: #F1EBE6;
+    --color-white: #FFFFFF;
+    --color-black: #000000;
+    --color-gray: #848484;
+    --color-red: #DE2121;
+    --color-orange: #C76F00;
+    
+    /* Цвета для мест */
+    --seat-standard: #FFFFFF;
+    --seat-vip: #F9953A;
+    --seat-taken: transparent;
+    --seat-selected: #25C4CE;
+    --seat-disabled: #C4C4C4;
+    
+    /* Размеры */
+    --header-height: 6rem;
+    --container-width: 990px;
+    --poster-width: 12.5rem;
+    --poster-height: 17.5rem;
+    
+    /* Шрифты */
+    --font-main: 'Roboto', sans-serif;
+    --font-size-base: 62.5%;
+    --font-size-small: 1.2rem;
+    --font-size-normal: 1.4rem;
+    --font-size-medium: 1.6rem;
+    --font-size-large: 2.2rem;
+    --font-size-xlarge: 3.4rem;
+    
+    /* Тени */
+    --shadow-small: 0px 2px 2px rgba(0, 0, 0, 0.24), 0px 0px 2px rgba(0, 0, 0, 0.12);
+    --shadow-medium: 0px 3px 3px rgba(0, 0, 0, 0.24), 0px 0px 3px rgba(0, 0, 0, 0.12);
+    --shadow-large: 0px 6px 8px rgba(0, 0, 0, 0.24), 0px 2px 2px rgba(0, 0, 0, 0.24);
+    
+    /* Анимации */
+    --transition-fast: 0.3s ease;
+    --transition-normal: 0.5s ease;
+    --transition-slow: 0.6s ease;
+  }

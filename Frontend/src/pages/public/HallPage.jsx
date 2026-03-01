@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useOutletContext } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -8,8 +7,8 @@ const HallPage = () => {
   const { screeningId } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { setNotification } = useOutletContext();
   
+  const [notification, setNotification] = useState(null);
   const [screening, setScreening] = useState(null);
   const [seats, setSeats] = useState([]);
   const [selectedSeats, setSelectedSeats] = useState([]);
@@ -17,61 +16,72 @@ const HallPage = () => {
   const [bookingInProgress, setBookingInProgress] = useState(false);
   const [error, setError] = useState(null);
 
+  // Функция для показа уведомлений
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 5000);
+  };
+
   // Загрузка данных о сеансе и местах
   useEffect(() => {
     const fetchScreeningData = async () => {
+      if (!screeningId || screeningId === '_') {
+        setError('Некорректный ID сеанса');
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
         
+        console.log('Fetching screening with ID:', screeningId);
+        
         // Получаем информацию о сеансе
         const screeningResponse = await api.get(`/screenings/${screeningId}/`);
+        console.log('Screening data:', screeningResponse.data);
         setScreening(screeningResponse.data);
         
         // Получаем информацию о доступных местах
-        const seatsResponse = await api.get(`/screenings/${screeningId}/available-seats/`);
+        const seatsResponse = await api.get(`/screenings/${screeningId}/available_seats/`);
+        console.log('Seats data:', seatsResponse.data);
         setSeats(seatsResponse.data);
       } catch (error) {
         console.error('Error fetching screening:', error);
-        setError('Не удалось загрузить информацию о сеансе');
-        setNotification({
-          message: 'Ошибка загрузки данных сеанса',
-          type: 'error'
-        });
+        if (error.response?.status === 404) {
+          setError(`Сеанс с ID ${screeningId} не найден в базе данных. Создайте сеанс в админке.`);
+        } else {
+          setError('Не удалось загрузить информацию о сеансе');
+        }
+        showNotification('Ошибка загрузки данных сеанса', 'error');
       } finally {
         setLoading(false);
       }
     };
 
-    if (screeningId) {
-      fetchScreeningData();
-    }
-  }, [screeningId, setNotification]);
+    fetchScreeningData();
+  }, [screeningId]);
 
   // Проверка авторизации при попытке бронирования
   useEffect(() => {
     if (selectedSeats.length > 0 && !isAuthenticated) {
-      // Сохраняем выбранные места в localStorage и перенаправляем на логин
       localStorage.setItem('pendingBooking', JSON.stringify({
         screeningId,
         selectedSeats: selectedSeats.map(s => s.seat_id),
         total: calculateTotal()
       }));
       
-      setNotification({
-        message: 'Для бронирования необходимо войти в систему',
-        type: 'info'
-      });
+      showNotification('Для бронирования необходимо войти в систему', 'info');
       
       navigate('/login', { 
         state: { from: `/hall/${screeningId}` }
       });
     }
-  }, [selectedSeats, isAuthenticated, navigate, screeningId, setNotification]);
+  }, [selectedSeats, isAuthenticated, navigate, screeningId]);
 
   // Переключение выбора места
   const toggleSeat = (seat) => {
-    if (!seat.is_available) return; // Нельзя выбрать занятое место
+    if (!seat.is_available) return;
 
     setSelectedSeats(prev => {
       const isSelected = prev.some(s => s.seat_id === seat.seat_id);
@@ -85,22 +95,22 @@ const HallPage = () => {
 
   // Получение CSS класса для места
   const getSeatClass = (seat) => {
-    const baseClass = 'w-8 h-8 border rounded transition-all duration-200 ';
+    const baseClass = 'buying-scheme__chair ';
     
     if (!seat.is_available) {
-      return baseClass + 'bg-gray-600 border-gray-700 cursor-not-allowed opacity-50';
+      return baseClass + 'buying-scheme__chair_taken';
     }
     
     const isSelected = selectedSeats.some(s => s.seat_id === seat.seat_id);
     if (isSelected) {
-      return baseClass + 'bg-primary border-primary scale-110 shadow-lg shadow-primary/50';
+      return baseClass + 'buying-scheme__chair_selected';
     }
     
     if (seat.seat_type === 'vip') {
-      return baseClass + 'bg-accent border-accent hover:scale-105 hover:shadow-md hover:shadow-accent/50';
+      return baseClass + 'buying-scheme__chair_vip';
     }
     
-    return baseClass + 'bg-white border-gray-400 hover:scale-105 hover:shadow-md hover:border-primary';
+    return baseClass + 'buying-scheme__chair_standart';
   };
 
   // Подсчет общей стоимости
@@ -111,18 +121,12 @@ const HallPage = () => {
   // Обработка бронирования
   const handleBooking = async () => {
     if (selectedSeats.length === 0) {
-      setNotification({
-        message: 'Выберите места для бронирования',
-        type: 'error'
-      });
+      showNotification('Выберите места для бронирования', 'error');
       return;
     }
 
     if (!isAuthenticated) {
-      setNotification({
-        message: 'Необходимо войти в систему',
-        type: 'info'
-      });
+      showNotification('Необходимо войти в систему', 'info');
       navigate('/login', { state: { from: `/hall/${screeningId}` } });
       return;
     }
@@ -131,14 +135,11 @@ const HallPage = () => {
     setError(null);
 
     try {
-      const response = await api.post(`/screenings/${screeningId}/book-seats/`, {
+      const response = await api.post(`/screenings/${screeningId}/book_seats/`, {
         seat_ids: selectedSeats.map(s => s.seat_id)
       });
       
-      setNotification({
-        message: 'Места успешно забронированы!',
-        type: 'success'
-      });
+      showNotification('Места успешно забронированы!', 'success');
       
       navigate('/payment', { 
         state: { 
@@ -150,39 +151,29 @@ const HallPage = () => {
     } catch (error) {
       console.error('Booking error:', error);
       
-      // Обработка различных ошибок
       if (error.response?.status === 401) {
-        setNotification({
-          message: 'Сессия истекла. Войдите снова',
-          type: 'error'
-        });
+        showNotification('Сессия истекла. Войдите снова', 'error');
         navigate('/login', { state: { from: `/hall/${screeningId}` } });
       } else if (error.response?.status === 400) {
         const errorData = error.response.data;
-        let errorMessage = 'Ошибка бронирования:\n';
+        let errorMessage = 'Ошибка бронирования';
         
         if (typeof errorData === 'object') {
-          Object.keys(errorData).forEach(key => {
-            errorMessage += `${key}: ${Array.isArray(errorData[key]) ? errorData[key].join(', ') : errorData[key]}\n`;
-          });
+          errorMessage = Object.keys(errorData).map(key => 
+            `${key}: ${Array.isArray(errorData[key]) ? errorData[key].join(', ') : errorData[key]}`
+          ).join('\n');
         } else {
           errorMessage = errorData.error || 'Некоторые места уже заняты';
         }
         
-        setNotification({
-          message: errorMessage,
-          type: 'error'
-        });
+        showNotification(errorMessage, 'error');
         
         // Обновляем данные о местах
-        const seatsResponse = await api.get(`/screenings/${screeningId}/available-seats/`);
+        const seatsResponse = await api.get(`/screenings/${screeningId}/available_seats/`);
         setSeats(seatsResponse.data);
         setSelectedSeats([]);
       } else {
-        setNotification({
-          message: 'Произошла ошибка при бронировании',
-          type: 'error'
-        });
+        showNotification('Произошла ошибка при бронировании', 'error');
       }
     } finally {
       setBookingInProgress(false);
@@ -213,11 +204,13 @@ const HallPage = () => {
   if (error || !screening) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center bg-white bg-opacity-95 p-8 rounded-lg">
-          <p className="text-2xl text-red-600 mb-4">⚠️ {error || 'Сеанс не найден'}</p>
+        <div className="text-center bg-white bg-opacity-95 p-8 rounded-lg max-w-md">
+          <p className="text-2xl text-red-600 mb-4">⚠️ Ошибка</p>
+          <p className="text-gray-700 mb-4">{error || 'Сеанс не найден'}</p>
+          <p className="text-sm text-gray-500 mb-4">ID сеанса: {screeningId}</p>
           <button
             onClick={() => navigate('/')}
-            className="bg-primary text-white px-6 py-3 rounded-lg hover:bg-opacity-90 transition"
+            className="bg-primary text-white px-6 py-3 rounded-lg hover:bg-opacity-90 transition w-full"
           >
             Вернуться на главную
           </button>
@@ -227,138 +220,137 @@ const HallPage = () => {
   }
 
   return (
-    <main>
-      <section className="bg-white bg-opacity-95 pb-12">
+    <main className="relative">
+      {/* Уведомление */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg ${
+          notification.type === 'success' ? 'bg-green-500' :
+          notification.type === 'error' ? 'bg-red-500' :
+          'bg-blue-500'
+        } text-white`}>
+          <div className="flex items-center gap-3">
+            <span className="text-xl">
+              {notification.type === 'success' ? '✅' :
+               notification.type === 'error' ? '❌' : 'ℹ️'}
+            </span>
+            <span className="font-medium">{notification.message}</span>
+            <button 
+              onClick={() => setNotification(null)}
+              className="ml-4 text-white hover:text-gray-200"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      <section className="buying">
         {/* Информация о сеансе */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 border-b">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-bold mb-2">{screening.movie_details?.title}</h2>
-            <div className="flex flex-wrap gap-4 text-gray-600">
-              <p>
-                <span className="font-semibold">Начало:</span>{' '}
-                {new Date(screening.start_time).toLocaleString('ru-RU', {
-                  day: 'numeric',
-                  month: 'long',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
-              </p>
-              <p>
-                <span className="font-semibold">Зал:</span> {screening.hall_details?.name}
-              </p>
-              <p>
-                <span className="font-semibold">Длительность:</span> {screening.movie_details?.duration} мин
-              </p>
-            </div>
+        <div className="buying__info">
+          <div className="buying__info-description">
+            <h2 className="buying__info-title">{screening.movie_details?.title}</h2>
+            <p className="buying__info-start">
+              Начало сеанса: {new Date(screening.start_time).toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </p>
+            <p className="buying__info-hall">Зал {screening.hall_details?.name}</p>
           </div>
           
-          {/* Подсказка */}
-          <div className="mt-4 md:mt-0 bg-gray-100 p-3 rounded-lg">
-            <p className="text-sm text-gray-600 flex items-center gap-2">
-              <span className="text-2xl">👆</span>
-              <span>Нажмите на место для выбора</span>
-            </p>
+          {/* Иконка-подсказка из CSS */}
+          <div className="buying__info-hint">
+            <p>Тапните дважды,<br />чтобы увеличить</p>
           </div>
         </div>
 
         {/* Схема зала */}
-        <div className="bg-dark py-8 px-4">
-          <div className="max-w-4xl mx-auto">
-            {/* Экран */}
-            <div className="text-center mb-8">
-              <div className="w-full h-2 bg-gradient-to-b from-gray-400 to-transparent rounded-t-lg"></div>
-              <p className="text-white text-sm mt-1">ЭКРАН</p>
-            </div>
+        <div className="buying-scheme">
+          <div className="buying-scheme__wrapper">
+            {/* Экран уже есть в CSS как background-image */}
             
             {/* Места */}
-            <div className="bg-dark-light rounded-lg p-6 overflow-x-auto">
-              {sortedRows.map(rowNum => (
-                <div key={rowNum} className="flex justify-center items-center gap-1 mb-2">
-                  <span className="text-white text-xs w-6 text-right mr-2">Ряд {rowNum}</span>
-                  <div className="flex flex-wrap justify-center gap-1">
-                    {seatsByRow[rowNum]
-                      .sort((a, b) => a.number - b.number)
-                      .map(seat => (
-                        <button
-                          key={seat.seat_id}
-                          onClick={() => toggleSeat(seat)}
-                          disabled={!seat.is_available || bookingInProgress}
-                          className={getSeatClass(seat)}
-                          title={`Ряд ${seat.row}, Место ${seat.number} - ${seat.seat_type === 'vip' ? 'VIP' : 'Обычное'} - ${seat.price}₽`}
-                        />
-                      ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {sortedRows.map(rowNum => (
+              <div key={rowNum} className="buying-scheme__row">
+                {seatsByRow[rowNum]
+                  .sort((a, b) => a.number - b.number)
+                  .map(seat => (
+                    <button
+                      key={seat.seat_id}
+                      onClick={() => toggleSeat(seat)}
+                      disabled={!seat.is_available || bookingInProgress}
+                      className={getSeatClass(seat)}
+                      title={`Ряд ${seat.row}, Место ${seat.number} - ${seat.seat_type === 'vip' ? 'VIP' : 'Обычное'} - ${seat.price}₽`}
+                    />
+                  ))}
+              </div>
+            ))}
+          </div>
 
-            {/* Легенда */}
-            <div className="flex flex-wrap justify-center gap-6 md:gap-12 text-white mt-8">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 bg-white border border-gray-400 rounded"></span>
-                <span>Обычное ({screening.price_standard} ₽)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 bg-accent border border-accent rounded"></span>
-                <span>VIP ({screening.price_vip} ₽)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 bg-gray-600 border border-gray-700 rounded opacity-50"></span>
-                <span>Занято</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 bg-primary border border-primary rounded shadow-lg shadow-primary/50"></span>
-                <span>Выбрано</span>
-              </div>
+          {/* Легенда из CSS */}
+          <div className="buying-scheme__legend">
+            <div className="col">
+              <p className="buying-scheme__legend-price">
+                <span className="buying-scheme__chair buying-scheme__chair_standart"></span>
+                Свободно ({screening.price_standard} руб)
+              </p>
+              <p className="buying-scheme__legend-price">
+                <span className="buying-scheme__chair buying-scheme__chair_vip"></span>
+                Свободно VIP ({screening.price_vip} руб)
+              </p>
             </div>
-
-            {/* Информация о выбранных местах */}
-            {selectedSeats.length > 0 && (
-              <div className="mt-6 p-4 bg-primary bg-opacity-20 rounded-lg">
-                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                  <div>
-                    <p className="text-white font-semibold">Выбрано мест: {selectedSeats.length}</p>
-                    <p className="text-white">
-                      {selectedSeats.map(s => `${s.row}-${s.number}`).join(', ')}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-white text-2xl font-bold">{calculateTotal()} ₽</p>
-                    <p className="text-white text-sm">Общая стоимость</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            <div className="col">
+              <p className="buying-scheme__legend-price">
+                <span className="buying-scheme__chair buying-scheme__chair_taken"></span>
+                Занято
+              </p>
+              <p className="buying-scheme__legend-price">
+                <span className="buying-scheme__chair buying-scheme__chair_selected"></span>
+                Выбрано
+              </p>
+            </div>
           </div>
         </div>
 
+        {/* Информация о выбранных местах */}
+        {selectedSeats.length > 0 && (
+          <div className="max-w-4xl mx-auto mt-6 p-4 bg-primary bg-opacity-20 rounded-lg">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+              <div>
+                <p className="text-white font-semibold">Выбрано мест: {selectedSeats.length}</p>
+                <p className="text-white">
+                  {selectedSeats.map(s => `${s.row}-${s.number}`).join(', ')}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-white text-2xl font-bold">{calculateTotal()} ₽</p>
+                <p className="text-white text-sm">Общая стоимость</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Кнопка бронирования */}
-        <div className="text-center mt-8">
-          <button
-            onClick={handleBooking}
-            disabled={selectedSeats.length === 0 || bookingInProgress}
-            className={`px-8 py-4 text-lg font-bold rounded-lg transition ${
-              selectedSeats.length === 0 || bookingInProgress
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-primary hover:bg-opacity-90 transform hover:scale-105'
-            } text-white shadow-lg`}
-          >
-            {bookingInProgress ? (
-              <span className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                Обработка...
-              </span>
-            ) : (
-              `Забронировать ${calculateTotal() > 0 ? `за ${calculateTotal()} ₽` : ''}`
-            )}
-          </button>
-          
-          {!isAuthenticated && selectedSeats.length > 0 && (
-            <p className="text-sm text-red-600 mt-2">
-              Для бронирования необходимо войти в систему
-            </p>
+        <button
+          onClick={handleBooking}
+          disabled={selectedSeats.length === 0 || bookingInProgress}
+          className="acceptin-button"
+        >
+          {bookingInProgress ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              Обработка...
+            </span>
+          ) : (
+            `Забронировать ${calculateTotal() > 0 ? `за ${calculateTotal()} ₽` : ''}`
           )}
-        </div>
+        </button>
+        
+        {!isAuthenticated && selectedSeats.length > 0 && (
+          <p className="text-center text-sm text-red-600 mt-2">
+            Для бронирования необходимо войти в систему
+          </p>
+        )}
       </section>
     </main>
   );

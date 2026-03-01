@@ -176,14 +176,21 @@ const AdminHalls = () => {
             </div>
 
             {/* Схема зала */}
-            <div className="mt-4 p-4 bg-gray-100 rounded-lg overflow-x-auto">
-              <div className="text-center mb-4">
-                <div className="inline-block px-8 py-2 bg-gray-300 rounded-t-lg text-sm font-semibold">
-                  ЭКРАН
-                </div>
-              </div>
-              <div className="flex flex-col items-center">
-                {getSeatGrid(hall)}
+            <div className="conf-step__hall">
+              <div className="conf-step__hall-wrapper">
+                {rows.map(row => (
+                  <div key={row} className="conf-step__row">
+                    {seats[row].map(seat => (
+                      <button
+                        key={seat.id}
+                        className={`conf-step__chair 
+                          ${seat.type === 'vip' ? 'conf-step__chair_vip' : ''}
+                          ${seat.disabled ? 'conf-step__chair_disabled' : 'conf-step__chair_standart'}
+                        `}
+                      />
+                    ))}
+                  </div>
+                ))}
               </div>
             </div>
           </div>

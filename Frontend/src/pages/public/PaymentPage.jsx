@@ -7,6 +7,8 @@ const PaymentPage = () => {
   const navigate = useNavigate();
   const [processing, setProcessing] = useState(false);
 
+  console.log('Payment page state:', location.state);
+
   // Получаем данные из состояния навигации
   const { bookings = [], screening = null, total = 0 } = location.state || {};
 
@@ -14,6 +16,7 @@ const PaymentPage = () => {
     return (
       <div className="container mx-auto px-4 py-20 text-center">
         <h2 className="text-3xl mb-4">Нет данных о бронировании</h2>
+        <p className="text-gray-300 mb-4">Попробуйте выбрать места заново</p>
         <button
           onClick={() => navigate('/')}
           className="text-primary hover:underline"

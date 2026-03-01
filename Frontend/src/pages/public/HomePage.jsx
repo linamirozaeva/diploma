@@ -6,10 +6,17 @@ const HomePage = () => {
   const [movies, setMovies] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(true);
+  const [screeningsByMovie, setScreeningsByMovie] = useState({});
 
   useEffect(() => {
     fetchMovies();
   }, []);
+
+  useEffect(() => {
+    if (movies.length > 0) {
+      fetchScreeningsForDate(selectedDate);
+    }
+  }, [movies, selectedDate]);
 
   const fetchMovies = async () => {
     try {
@@ -19,6 +26,26 @@ const HomePage = () => {
       console.error('Error fetching movies:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchScreeningsForDate = async (date) => {
+    try {
+      const response = await api.get(`/screenings/?date=${date}`);
+      const screenings = response.data;
+      
+      const grouped = {};
+      screenings.forEach(screening => {
+        const movieId = screening.movie;
+        if (!grouped[movieId]) {
+          grouped[movieId] = [];
+        }
+        grouped[movieId].push(screening);
+      });
+      
+      setScreeningsByMovie(grouped);
+    } catch (error) {
+      console.error('Error fetching screenings:', error);
     }
   };
 
@@ -36,81 +63,128 @@ const HomePage = () => {
     });
   }
 
+  const formatTime = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   if (loading) {
     return (
-      <main className="container mx-auto px-4 py-8">
-        <div className="text-center text-2xl">Загрузка...</div>
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-xl text-gray-600">Загрузка...</p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      {/* Навигация по дням */}
-      <nav className="flex gap-1 mb-8 overflow-x-auto">
+    <main>
+      {/* Навигация по дням - sticky */}
+      <nav className="page-nav" style={{ position: 'sticky', top: '2px', zIndex: 10 }}>
         {dates.map((date) => (
-          <button
+          <a
             key={date.fullDate}
-            onClick={() => setSelectedDate(date.fullDate)}
-            className={`flex-1 min-w-[80px] p-4 text-center rounded transition ${
-              selectedDate === date.fullDate
-                ? 'bg-white scale-110 font-bold shadow-lg'
-                : 'bg-white bg-opacity-90 hover:bg-opacity-100'
-            } ${date.isWeekend ? 'text-red-600' : ''}`}
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              setSelectedDate(date.fullDate);
+            }}
+            className={`page-nav__day ${
+              date.isToday ? 'page-nav__day_today' : ''
+            } ${
+              selectedDate === date.fullDate ? 'page-nav__day_chosen' : ''
+            } ${date.isWeekend ? 'page-nav__day_weekend' : ''}`}
           >
-            <span className="block">
-              {date.isToday ? 'Сегодня' : date.day}
-              {!date.isToday && <span className="text-xs">,</span>}
+            <span className="page-nav__day-week">
+              {date.isToday ? '' : date.day}
             </span>
-            <span className="block text-sm">
-              {!date.isToday && date.number}
-            </span>
-          </button>
+            <span className="page-nav__day-number">{date.number}</span>
+          </a>
         ))}
+        <a href="#" className="page-nav__day page-nav__day_next"></a>
       </nav>
 
       {/* Список фильмов */}
-      <div className="space-y-8">
-        {movies.map((movie) => (
-          <section key={movie.id} className="bg-white bg-opacity-95 p-6 rounded-lg">
-            <div className="flex gap-6">
-              {/* Постер */}
-              <div className="relative w-40 h-56 flex-shrink-0">
-                <img
-                  src={movie.poster_url || '/src/assets/no-poster.jpg'}
-                  alt={movie.title}
-                  className="absolute top-0 left-0 w-full h-full object-cover rounded"
-                />
-              </div>
-              
-              {/* Информация о фильме */}
-              <div className="flex-grow">
-                <h2 className="text-2xl font-bold mb-3">{movie.title}</h2>
-                <p className="text-gray-700 mb-4 line-clamp-3">{movie.description}</p>
-                <p className="text-gray-600">
-                  <span className="mr-6">{movie.duration} минут</span>
-                  <span>{movie.country || 'Не указано'}</span>
-                </p>
-                
-                {/* Сеансы по залам */}
-                <div className="mt-4">
-                  <h3 className="font-bold text-lg mb-2">Зал 1</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {[1, 2, 3, 4].map((time) => (
-                      <Link
-                        key={time}
-                        to={`/hall/${time}`}
-                        className="px-4 py-2 bg-white text-gray-800 rounded shadow hover:shadow-md transition"
-                      >
-                        {10 + time}:00
-                      </Link>
-                    ))}
+      <div className="container mx-auto px-4 py-8">
+        {movies.length === 0 ? (
+          <div className="text-center py-12 bg-white bg-opacity-95 rounded-lg">
+            <p className="text-xl text-gray-600 mb-4">Фильмы не найдены</p>
+            <p className="text-gray-500">Добавьте фильмы в админ-панели</p>
+          </div>
+        ) : (
+          movies.map((movie) => {
+            const movieScreenings = screeningsByMovie[movie.id] || [];
+            
+            const screeningsByHall = {};
+            movieScreenings.forEach(screening => {
+              const hallName = screening.hall_details?.name || 'Зал';
+              if (!screeningsByHall[hallName]) {
+                screeningsByHall[hallName] = [];
+              }
+              screeningsByHall[hallName].push(screening);
+            });
+
+            return (
+              <section key={movie.id} className="movie">
+                <div className="movie__info">
+                  {/* Постер с красным уголком */}
+                  <div className="movie__poster">
+                    <img
+                      className="movie__poster-image"
+                      src={movie.poster_url || '/src/assets/poster1_client.jpg'}
+                      alt={movie.title}
+                      onError={(e) => {
+                        e.target.src = '/src/assets/poster1_client.jpg';
+                      }}
+                    />
+                  </div>
+                  
+                  {/* Информация о фильме */}
+                  <div className="movie__description">
+                    <h2 className="movie__title">{movie.title}</h2>
+                    <p className="movie__synopsis">{movie.description || 'Описание отсутствует'}</p>
+                    <p className="movie__data">
+                      <span className="movie__data-duration">{movie.duration} минут</span>
+                      <span className="movie__data-origin">{movie.country || 'Не указано'}</span>
+                    </p>
                   </div>
                 </div>
-              </div>
-            </div>
-          </section>
-        ))}
+                
+                {/* Сеансы по залам */}
+                {Object.keys(screeningsByHall).length > 0 ? (
+                  Object.entries(screeningsByHall).map(([hallName, screenings]) => (
+                    <div key={hallName} className="movie-seances__hall">
+                      <h3 className="movie-seances__hall-title">{hallName}</h3>
+                      <ul className="movie-seances__list">
+                        {screenings.map((screening) => (
+                          <li key={screening.id} className="movie-seances__time-block">
+                            <Link
+                              to={`/hall/${screening.id}`}
+                              className="movie-seances__time"
+                            >
+                              {formatTime(screening.start_time)}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))
+                ) : (
+                  <div className="movie-seances__hall">
+                    <p className="text-gray-500 text-center py-4">
+                      Нет сеансов на выбранную дату
+                    </p>
+                  </div>
+                )}
+              </section>
+            );
+          })
+        )}
       </div>
     </main>
   );

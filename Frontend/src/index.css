@@ -1,4 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700;900&display=swap');
+@import './styles/base/normalize.css';
+@import './styles/public/main.css';
+@import './styles/admin/admin.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,7 +14,32 @@
   }
   
   body {
-    @apply bg-cover bg-fixed bg-right;
-    background-image: url('/src/assets/background.jpg');
+    /* ===== КАРТИНКА ДЛЯ PUBLIC ЧАСТИ ===== */
+    /* Файл: background_client.jpg */
+    /* Описание: Фоновое изображение для публичных страниц */
+    /* Путь: /src/assets/background_client.jpg */
+    background-image: url('/src/assets/background_client.jpg');
+    background-size: cover;
+    background-attachment: fixed;
+    background-position: right;
+    min-height: 100vh;
+    /* Убираем все затемнения */
+    background-color: transparent;
+    background-blend-mode: normal;
+  }
+}
+
+@layer components {
+  /* Общие компоненты для всего проекта */
+  .container {
+    @apply max-w-7xl mx-auto px-4;
+  }
+  
+  .btn-primary {
+    @apply bg-primary text-white px-6 py-3 rounded-lg hover:bg-opacity-90 transition;
+  }
+  
+  .btn-secondary {
+    @apply bg-secondary text-white px-6 py-3 rounded-lg hover:bg-opacity-90 transition;
   }
 }

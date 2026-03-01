@@ -61,73 +61,60 @@ const TicketPage = () => {
   });
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white bg-opacity-95 rounded-lg p-8 relative">
-          {/* Декоративные полоски сверху */}
-          <div className="absolute top-0 left-0 right-0 h-[3px] bg-repeat-x"
-               style={{backgroundImage: 'url(/src/assets/border-top.png)'}}></div>
+    <main>
+      <section className="ticket">
+        <header className="tichet__check">
+          <h2 className="ticket__check-title">Электронный билет</h2>
+        </header>
+        
+        <div className="ticket__info-wrapper">
+          <p className="ticket__info">
+            На фильм: <span className="ticket__details ticket__title">{booking.screening_details?.movie_title}</span>
+          </p>
+          
+          <p className="ticket__info">
+            Места: <span className="ticket__details ticket__chairs">
+              Ряд {booking.seat_details?.row}, Место {booking.seat_details?.number}
+            </span>
+          </p>
+          
+          <p className="ticket__info">
+            В зале: <span className="ticket__details ticket__hall">{booking.screening_details?.hall_name}</span>
+          </p>
+          
+          <p className="ticket__info">
+            Начало сеанса: <span className="ticket__details ticket__start">
+              {new Date(booking.screening_details?.start_time).toLocaleString('ru-RU', {
+                day: 'numeric',
+                month: 'long',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </span>
+          </p>
+          
+          <p className="ticket__info">
+            Стоимость: <span className="ticket__details ticket__cost">{booking.price}</span> рублей
+          </p>
 
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-orange-600 uppercase">
-              Электронный билет
-            </h2>
-          </div>
-
-          {/* Информация о билете */}
-          <div className="space-y-4 mb-8">
-            <p className="text-lg">
-              На фильм:{' '}
-              <span className="font-bold">{booking.screening_details?.movie_title}</span>
-            </p>
-            
-            <p className="text-lg">
-              Места:{' '}
-              <span className="font-bold">
-                Ряд {booking.seat_details?.row}, Место {booking.seat_details?.number}
-              </span>
-            </p>
-            
-            <p className="text-lg">
-              В зале:{' '}
-              <span className="font-bold">{booking.screening_details?.hall_name}</span>
-            </p>
-            
-            <p className="text-lg">
-              Начало сеанса:{' '}
-              <span className="font-bold">
-                {new Date(booking.screening_details?.start_time).toLocaleString('ru-RU', {
-                  day: 'numeric',
-                  month: 'long',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
-              </span>
-            </p>
-          </div>
-
-          {/* ====================================================
-              КАРТИНКА: QR-код (генерируется динамически)
-              Не требует файла изображения, создается кодом
-              Содержит: код бронирования, фильм, ряд, место, время
-              ==================================================== */}
+          {/* QR-код */}
           <div className="flex justify-center mb-8">
             <QRCodeSVG
               value={qrData}
               size={200}
               level="H"
               includeMargin={true}
-              className="border-2 border-gray-300 p-2"
+              className="ticket__info-qr"
             />
           </div>
 
           {/* Подсказки */}
-          <div className="text-sm text-gray-600 space-y-2 text-center">
-            <p>
-              Покажите QR-код нашему контроллеру для подтверждения бронирования.
-            </p>
-            <p className="font-semibold">Приятного просмотра!</p>
-          </div>
+          <p className="ticket__hint">
+            Покажите QR-код нашему контроллеру для подтверждения бронирования.
+          </p>
+          <p className="ticket__hint">
+            Приятного просмотра!
+          </p>
 
           {/* Кнопки действий */}
           <div className="flex gap-4 mt-8">
@@ -144,12 +131,8 @@ const TicketPage = () => {
               На главную
             </button>
           </div>
-
-          {/* Декоративные полоски снизу */}
-          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-repeat-x"
-               style={{backgroundImage: 'url(/src/assets/border-bottom.png)'}}></div>
         </div>
-      </div>
+      </section>
     </main>
   );
 };

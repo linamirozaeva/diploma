@@ -4,6 +4,9 @@ from rest_framework.response import Response
 from django.utils import timezone
 from django.db.models import Q, Count, Sum
 from django.shortcuts import get_object_or_404
+from datetime import timedelta
+import base64
+
 from bookings.models import Booking
 from config.permissions import (
     IsAdminUser, IsOwnerOrAdminForBooking, 
@@ -16,16 +19,6 @@ from .serializers import (
 from screenings.models import Screening  
 from cinemas.models import Seat
 
-class IsAdminOrOwner(permissions.BasePermission):
-    """
-    Разрешение: админы могут всё, владельцы только свои брони
-    """
-    def has_object_permission(self, request, view, obj):
-        # Админы могут всё
-        if request.user.is_admin_user:
-            return True
-        # Владельцы могут просматривать свои брони
-        return obj.user == request.user
 
 class BookingViewSet(viewsets.ModelViewSet):
     """
@@ -37,12 +30,18 @@ class BookingViewSet(viewsets.ModelViewSet):
     update: Не разрешено
     partial_update: Не разрешено
     destroy: Только админы
+    
+    Дополнительные действия:
+    my_bookings: Свои бронирования (для пользователей)
+    cancel: Отмена бронирования (владелец или админ)
+    qr_code: Получение QR-кода (владелец или админ)
+    verify: Проверка бронирования по коду (только админы)
+    stats: Статистика (только админы)
     """
-    serializer_class = BookingListSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['booking_code', 'screening__movie__title']
     ordering_fields = ['created_at', 'screening__start_time', 'price']
-    
+
     def get_queryset(self):
         """Фильтрация бронирований в зависимости от роли"""
         user = self.request.user
@@ -56,197 +55,6 @@ class BookingViewSet(viewsets.ModelViewSet):
             queryset = Booking.objects.all()
         else:
             # Обычные пользователи видят только свои
-            queryset = Booking.objects.filter(user=user)
-        
-        # Фильтрация по статусу
-        status_filter = self.request.query_params.get('status')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        
-        return queryset.select_related(
-            'user', 'screening', 'seat', 
-            'screening__movie', 'screening__hall'
-        ).order_by('-created_at')
-    
-    def get_serializer_class(self):
-        """Выбор сериализатора"""
-        if self.action == 'create':
-            return BookingCreateSerializer
-        elif self.action == 'retrieve':
-            return BookingDetailSerializer
-        elif self.action == 'cancel':
-            return BookingCancelSerializer
-        return BookingListSerializer
-    
-    def get_permissions(self):
-        """Динамическое определение прав доступа"""
-        if self.action == 'create':
-            # Создание бронирования - авторизованные пользователи
-            permission_classes = [CanCreateBooking]
-        elif self.action in ['list', 'retrieve']:
-            # Просмотр - админы все, пользователи свои
-            permission_classes = [CanViewBookings]
-        elif self.action == 'cancel':
-            # Отмена - владелец или админ (с проверкой времени)
-            permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdminForBooking]
-        elif self.action == 'destroy':
-            # Удаление - только админы
-            permission_classes = [IsAdminUser]
-        else:
-            permission_classes = [IsAdminUser]
-        
-        return [permission() for permission in permission_classes]
-    
-    def create(self, request, *args, **kwargs):
-        """
-        Создание бронирования
-        """
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.context['request'] = request
-        
-        booking = serializer.save()
-        response_serializer = BookingDetailSerializer(booking)
-        
-        return Response({
-            'status': 'success',
-            'booking': response_serializer.data
-        }, status=status.HTTP_201_CREATED)
-    
-    @action(detail=False, methods=['get'])
-    def my_bookings(self, request):
-        """
-        Свои бронирования - доступно авторизованным
-        """
-        if not request.user.is_authenticated:
-            return Response(
-                {'error': 'Требуется авторизация'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        
-        bookings = Booking.objects.filter(user=request.user).order_by('-created_at')
-        
-        serializer = BookingDetailSerializer(bookings, many=True)
-        return Response({
-            'total': bookings.count(),
-            'active': bookings.filter(status='confirmed').count(),
-            'bookings': serializer.data
-        })
-    
-    @action(detail=True, methods=['post'])
-    def cancel(self, request, pk=None):
-        """
-        Отмена бронирования - владелец или админ
-        """
-        booking = self.get_object()
-        
-        # Дополнительная проверка прав через permission classes уже есть
-        serializer = BookingCancelSerializer(booking, data={}, partial=True)
-        
-        if serializer.is_valid():
-            serializer.save()
-            return Response({
-                'status': 'success',
-                'message': 'Бронирование отменено'
-            })
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    @action(detail=True, methods=['get'])
-    def qr_code(self, request, pk=None):
-        """
-        Получить QR-код - владелец или админ
-        """
-        booking = self.get_object()
-        
-        # Проверка прав
-        if not (request.user.is_admin_user or booking.user == request.user):
-            return Response(
-                {'error': 'Нет доступа'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        if not booking.qr_code:
-            return Response(
-                {'error': 'QR-код не найден'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        return Response({
-            'qr_code_url': booking.qr_code.url
-        })
-    
-    @action(detail=False, methods=['post'], permission_classes=[IsAdminUser])
-    def verify(self, request):
-        """
-        Проверить бронирование по коду - только для админов (контроллеры)
-        POST /api/bookings/verify/
-        {
-            "booking_code": "BK12345678"
-        }
-        """
-        booking_code = request.data.get('booking_code')
-    
-        try:
-            booking = Booking.objects.get(booking_code=booking_code)
-        except Booking.DoesNotExist:
-            return Response(
-                {'valid': False, 'error': 'Бронирование не найдено'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-    
-        # Проверка статуса
-        if booking.status == 'used':
-            return Response({
-                'valid': False,
-                'message': 'Билет уже использован'
-            })
-    
-        if booking.status == 'cancelled':
-            return Response({
-                'valid': False,
-                'message': 'Бронирование отменено'
-            })
-    
-        # Если билет действителен
-        if request.data.get('mark_as_used'):
-            booking.status = 'used'
-            booking.save()
-            return Response({
-                'valid': True,
-                'message': 'Билет действителен и отмечен как использованный'
-            })
-    
-        return Response({
-            'valid': True,
-            'message': 'Билет действителен'
-        })  # <- Здесь должна быть только эта строка
-    
-        """
-    ViewSet для управления бронированиями
-    
-    list: Получить список бронирований (админ - все, пользователь - свои)
-    retrieve: Получить детальную информацию о бронировании
-    create: Создать новое бронирование (авторизованный пользователь)
-    update: Обновить бронирование (не рекомендуется)
-    partial_update: Частично обновить бронирование
-    destroy: Удалить бронирование
-    """
-    serializer_class = BookingListSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['booking_code', 'screening__movie__title']
-    ordering_fields = ['created_at', 'screening__start_time', 'price']
-    
-    def get_queryset(self):
-        """Фильтрация бронирований в зависимости от роли"""
-        user = self.request.user
-        
-        if user.is_admin_user:
-            # Админ видит все бронирования
-            queryset = Booking.objects.all()
-        else:
-            # Обычный пользователь видит только свои
             queryset = Booking.objects.filter(user=user)
         
         # Фильтрация по статусу
@@ -273,8 +81,11 @@ class BookingViewSet(viewsets.ModelViewSet):
         if movie_id:
             queryset = queryset.filter(screening__movie_id=movie_id)
         
-        return queryset.order_by('-created_at')
-    
+        return queryset.select_related(
+            'user', 'screening', 'seat', 
+            'screening__movie', 'screening__hall'
+        ).order_by('-created_at')
+
     def get_serializer_class(self):
         """Выбор сериализатора в зависимости от действия"""
         if self.action == 'create':
@@ -284,24 +95,33 @@ class BookingViewSet(viewsets.ModelViewSet):
         elif self.action == 'cancel':
             return BookingCancelSerializer
         return BookingListSerializer
-    
+
     def get_permissions(self):
-        """Права доступа для разных действий"""
+        """Динамическое определение прав доступа"""
         if self.action == 'create':
-            # Создавать могут авторизованные пользователи
-            permission_classes = [permissions.IsAuthenticated]
+            # Создание бронирования - авторизованные пользователи
+            permission_classes = [CanCreateBooking]
         elif self.action in ['list', 'retrieve']:
-            # Просматривать с дополнительной фильтрацией
-            permission_classes = [permissions.IsAuthenticated]
+            # Просмотр - админы все, пользователи свои
+            permission_classes = [CanViewBookings]
+        elif self.action == 'cancel':
+            # Отмена - владелец или админ (с проверкой времени)
+            permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdminForBooking]
+        elif self.action == 'destroy':
+            # Удаление - только админы
+            permission_classes = [IsAdminUser]
+        elif self.action in ['stats', 'verify']:
+            # Статистика и проверка - только админы
+            permission_classes = [IsAdminUser]
         else:
-            # Остальное только для админов или владельцев
-            permission_classes = [permissions.IsAuthenticated, IsAdminOrOwner]
+            permission_classes = [IsAdminUser]
         
         return [permission() for permission in permission_classes]
-    
+
     def create(self, request, *args, **kwargs):
         """
         Создание бронирования с полной валидацией
+        POST /api/bookings/
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -320,19 +140,25 @@ class BookingViewSet(viewsets.ModelViewSet):
                 'status': 'error',
                 'message': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     @action(detail=False, methods=['get'])
     def my_bookings(self, request):
         """
         Получить все бронирования текущего пользователя
         GET /api/bookings/my_bookings/
         """
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Требуется авторизация'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
         bookings = Booking.objects.filter(user=request.user).order_by('-created_at')
         
         # Фильтрация по статусу
-        status = request.query_params.get('status')
-        if status:
-            bookings = bookings.filter(status=status)
+        status_param = request.query_params.get('status')
+        if status_param:
+            bookings = bookings.filter(status=status_param)
         
         # Фильтрация по дате сеанса
         date = request.query_params.get('date')
@@ -355,7 +181,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             'used': bookings.filter(status='used').count(),
             'bookings': serializer.data
         })
-    
+
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         """
@@ -377,7 +203,7 @@ class BookingViewSet(viewsets.ModelViewSet):
             'status': 'error',
             'message': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     @action(detail=True, methods=['get'])
     def qr_code(self, request, pk=None):
         """
@@ -394,7 +220,6 @@ class BookingViewSet(viewsets.ModelViewSet):
         
         # Возвращаем URL или base64
         if request.query_params.get('format') == 'base64':
-            import base64
             try:
                 with open(booking.qr_code.path, 'rb') as f:
                     qr_base64 = base64.b64encode(f.read()).decode()
@@ -413,65 +238,15 @@ class BookingViewSet(viewsets.ModelViewSet):
             'booking_id': booking.id,
             'booking_code': booking.booking_code
         })
-    
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        """
-        Статистика по бронированиям (только для админов)
-        GET /api/bookings/stats/
-        """
-        if not request.user.is_admin_user:
-            return Response(
-                {'error': 'Только для администраторов'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Общая статистика
-        total_bookings = Booking.objects.count()
-        total_revenue = Booking.objects.filter(status='confirmed').aggregate(
-            total=Sum('price')
-        )['total'] or 0
-        
-        # Статистика по статусам
-        status_stats = Booking.objects.values('status').annotate(
-            count=Count('id'),
-            revenue=Sum('price')
-        )
-        
-        # Статистика по дням (последние 7 дней)
-        from datetime import timedelta
-        last_week = timezone.now().date() - timedelta(days=7)
-        daily_stats = Booking.objects.filter(
-            created_at__date__gte=last_week
-        ).values('created_at__date').annotate(
-            count=Count('id'),
-            revenue=Sum('price')
-        ).order_by('created_at__date')
-        
-        # Статистика по фильмам
-        movie_stats = Booking.objects.filter(
-            status='confirmed'
-        ).values('screening__movie__title').annotate(
-            count=Count('id'),
-            revenue=Sum('price')
-        ).order_by('-revenue')[:10]
-        
-        return Response({
-            'total_bookings': total_bookings,
-            'total_revenue': total_revenue,
-            'average_price': total_revenue / total_bookings if total_bookings else 0,
-            'by_status': list(status_stats),
-            'daily_stats': list(daily_stats),
-            'top_movies': list(movie_stats)
-        })
-    
+
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAdminUser])
     def verify(self, request):
         """
         Проверить бронирование по коду (для контроллера)
         POST /api/bookings/verify/
         {
-            "booking_code": "BK12345678"
+            "booking_code": "BK12345678",
+            "mark_as_used": true (опционально)
         }
         """
         booking_code = request.data.get('booking_code')
@@ -541,4 +316,48 @@ class BookingViewSet(viewsets.ModelViewSet):
             'status': booking.status,
             'message': 'Неизвестный статус бронирования',
             'booking': BookingDetailSerializer(booking).data
+        })
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAdminUser])
+    def stats(self, request):
+        """
+        Статистика по бронированиям (только для админов)
+        GET /api/bookings/stats/
+        """
+        # Общая статистика
+        total_bookings = Booking.objects.count()
+        total_revenue = Booking.objects.filter(status='confirmed').aggregate(
+            total=Sum('price')
+        )['total'] or 0
+        
+        # Статистика по статусам
+        status_stats = Booking.objects.values('status').annotate(
+            count=Count('id'),
+            revenue=Sum('price')
+        )
+        
+        # Статистика по дням (последние 7 дней)
+        last_week = timezone.now().date() - timedelta(days=7)
+        daily_stats = Booking.objects.filter(
+            created_at__date__gte=last_week
+        ).values('created_at__date').annotate(
+            count=Count('id'),
+            revenue=Sum('price')
+        ).order_by('created_at__date')
+        
+        # Статистика по фильмам
+        movie_stats = Booking.objects.filter(
+            status='confirmed'
+        ).values('screening__movie__title').annotate(
+            count=Count('id'),
+            revenue=Sum('price')
+        ).order_by('-revenue')[:10]
+        
+        return Response({
+            'total_bookings': total_bookings,
+            'total_revenue': total_revenue,
+            'average_price': total_revenue / total_bookings if total_bookings else 0,
+            'by_status': list(status_stats),
+            'daily_stats': list(daily_stats),
+            'top_movies': list(movie_stats)
         })
