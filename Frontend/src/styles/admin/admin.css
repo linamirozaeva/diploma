@@ -18,10 +18,7 @@
   }
 }
 
-/* ===== КАРТИНКА: background_admin.jpg ===== */
-/* Файл: background_admin.jpg */
-/* Описание: Фоновое изображение для административной части */
-/* Путь: /src/assets/background_admin.jpg */
+
 body {
   background-image: url('/src/assets/background_admin.jpg');
 /*  background-color: rgba(0, 0, 0, 0.5); */
@@ -116,10 +113,7 @@ body {
   background-color: #BC95D6;
 }
 
-/* ===== КАРТИНКА: switch_admin.png ===== */
-/* Файл: switch_admin.png */
-/* Описание: Стрелка для сворачивания/разворачивания секций */
-/* Путь: /src/assets/switch_admin.png */
+
 .conf-step__header::after {
   content: '';
   position: absolute;
@@ -297,10 +291,7 @@ body {
   box-shadow: 0px 1px 2px rgba(0, 0, 0, 0.75);
 }
 
-/* ===== КАРТИНКА: trash-spite_admin.png ===== */
-/* Файл: trash-spite_admin.png */
-/* Описание: Спрайт для кнопки удаления (обычное и нажатое состояние) */
-/* Путь: /src/assets/trash-spite_admin.png */
+
 .conf-step__button-trash {
   position: relative;
   width: 20px;
@@ -424,10 +415,7 @@ textarea.conf-step__input {
   background-color: #b0d6d8;
 }
 
-/* ===== КАРТИНКА: green-pattern_admin.png ===== */
-/* Файл: green-pattern_admin.png */
-/* Описание: Текстура для VIP кресел в конфигураторе залов */
-/* Путь: /src/assets/green-pattern_admin.png */
+
 .conf-step__chair_vip {
   background-image: url('/src/assets/green-pattern_admin.png');
   background-repeat: repeat;
@@ -559,10 +547,7 @@ textarea.conf-step__input {
   height: 50px;
 }
 
-/* ===== КАРТИНКА: poster_admin.jpg ===== */
-/* Файл: poster_admin.jpg */
-/* Описание: Постер фильма в административной панели */
-/* Путь: /src/assets/poster_admin.jpg */
+
 .conf-step__movie-poster {
   background-image: url('/src/assets/poster_admin.jpg');
   background-size: cover;

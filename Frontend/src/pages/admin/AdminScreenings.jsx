@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import api from '../../services/api';
+import AccordionSection from './components/AccordionSection';
 
 const AdminScreenings = () => {
   const [screenings, setScreenings] = useState([]);
@@ -9,6 +10,7 @@ const AdminScreenings = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingScreening, setEditingScreening] = useState(null);
+  const [validationErrors, setValidationErrors] = useState({});
   const { setNotification } = useOutletContext();
   
   const [formData, setFormData] = useState({
@@ -30,12 +32,18 @@ const AdminScreenings = () => {
         api.get('/movies/'),
         api.get('/cinemas/halls/'),
       ]);
-      setScreenings(screeningsRes.data);
+      
+      console.log('Movies loaded:', moviesRes.data);
+      console.log('Halls loaded:', hallsRes.data);
+      console.log('Screenings loaded:', screeningsRes.data);
+      
       setMovies(moviesRes.data);
       setHalls(hallsRes.data);
+      setScreenings(screeningsRes.data);
     } catch (error) {
+      console.error('Error fetching data:', error);
       setNotification({
-        message: 'Ошибка загрузки данных: ' + (error.response?.data?.detail || error.message),
+        message: 'Ошибка загрузки данных',
         type: 'error'
       });
     } finally {
@@ -44,30 +52,130 @@ const AdminScreenings = () => {
   };
 
   const handleInputChange = (e) => {
+    const { name, value } = e.target;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [name]: value
     });
+    if (validationErrors[name]) {
+      setValidationErrors({
+        ...validationErrors,
+        [name]: null
+      });
+    }
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    
+    if (!formData.movie) {
+      errors.movie = 'Выберите фильм';
+    }
+    if (!formData.hall) {
+      errors.hall = 'Выберите зал';
+    }
+    if (!formData.start_time) {
+      errors.start_time = 'Укажите время начала';
+    }
+    if (!formData.price_standard || formData.price_standard < 0) {
+      errors.price_standard = 'Укажите корректную цену';
+    }
+    if (!formData.price_vip || formData.price_vip < 0) {
+      errors.price_vip = 'Укажите корректную цену';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    try {
-      if (editingScreening) {
-        await api.put(`/screenings/${editingScreening.id}/`, formData);
-        setNotification({ message: 'Сеанс успешно обновлен!', type: 'success' });
-      } else {
-        await api.post('/screenings/', formData);
-        setNotification({ message: 'Сеанс успешно создан!', type: 'success' });
-      }
-      fetchData();
-      setShowModal(false);
-      resetForm();
-    } catch (error) {
+    
+    if (!validateForm()) {
       setNotification({
-        message: 'Ошибка сохранения: ' + (error.response?.data?.detail || error.message),
+        message: 'Заполните все обязательные поля',
         type: 'error'
       });
+      return;
+    }
+  
+    const selectedMovie = movies.find(m => m.id === parseInt(formData.movie));
+    
+    if (!selectedMovie) {
+      setNotification({
+        message: 'Выбранный фильм не найден',
+        type: 'error'
+      });
+      return;
+    }
+  
+    const startTime = new Date(formData.start_time);
+    
+    const endTime = new Date(startTime.getTime() + selectedMovie.duration * 60000);
+    
+    const formatDateForDjango = (date) => {
+      return date.toISOString().slice(0, 19).replace('T', ' ');
+    };
+  
+    const screeningData = {
+      movie: parseInt(formData.movie),
+      hall: parseInt(formData.hall),
+      start_time: formatDateForDjango(startTime),
+      end_time: formatDateForDjango(endTime),  
+      price_standard: parseInt(formData.price_standard),
+      price_vip: parseInt(formData.price_vip)
+    };
+  
+    console.log('Selected movie:', selectedMovie);
+    console.log('Duration:', selectedMovie.duration);
+    console.log('Start time:', startTime);
+    console.log('End time:', endTime);
+    console.log('Sending screening data:', screeningData);
+  
+    try {
+      let response;
+      if (editingScreening) {
+        response = await api.put(`/screenings/${editingScreening.id}/`, screeningData);
+        console.log('Update response:', response.data);
+        setNotification({ message: 'Сеанс обновлен', type: 'success' });
+      } else {
+        response = await api.post('/screenings/', screeningData);
+        console.log('Create response:', response.data);
+        setNotification({ message: 'Сеанс создан', type: 'success' });
+      }
+      
+      await fetchData();
+      setShowModal(false);
+      resetForm();
+      
+    } catch (error) {
+      console.error('Error saving screening:', error);
+      console.error('Error response data:', error.response?.data);
+      console.error('Error response status:', error.response?.status);
+      
+      if (error.response?.data) {
+        const serverErrors = error.response.data;
+        let errorMessage = '';
+        
+        if (typeof serverErrors === 'object') {
+          errorMessage = Object.entries(serverErrors)
+            .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+            .join('\n');
+          setValidationErrors(serverErrors);
+        } else {
+          errorMessage = serverErrors;
+        }
+        
+        setNotification({
+          message: errorMessage || 'Ошибка сохранения',
+          type: 'error'
+        });
+      } else {
+        setNotification({
+          message: 'Ошибка соединения с сервером',
+          type: 'error'
+        });
+      }
     }
   };
 
@@ -75,11 +183,12 @@ const AdminScreenings = () => {
     if (window.confirm('Вы уверены, что хотите удалить этот сеанс?')) {
       try {
         await api.delete(`/screenings/${id}/`);
-        setNotification({ message: 'Сеанс успешно удален!', type: 'success' });
+        setNotification({ message: 'Сеанс удален', type: 'success' });
         fetchData();
       } catch (error) {
+        console.error('Error deleting screening:', error);
         setNotification({
-          message: 'Ошибка удаления: ' + (error.response?.data?.detail || error.message),
+          message: 'Ошибка удаления сеанса',
           type: 'error'
         });
       }
@@ -88,13 +197,17 @@ const AdminScreenings = () => {
 
   const handleEdit = (screening) => {
     setEditingScreening(screening);
+    const startTime = new Date(screening.start_time);
+    const formattedDate = startTime.toISOString().slice(0, 16);
+    
     setFormData({
       movie: screening.movie,
       hall: screening.hall,
-      start_time: screening.start_time.slice(0, 16),
+      start_time: formattedDate,
       price_standard: screening.price_standard,
       price_vip: screening.price_vip,
     });
+    setValidationErrors({});
     setShowModal(true);
   };
 
@@ -107,6 +220,7 @@ const AdminScreenings = () => {
       price_standard: 250,
       price_vip: 350,
     });
+    setValidationErrors({});
   };
 
   const formatDateTime = (dateString) => {
@@ -129,99 +243,85 @@ const AdminScreenings = () => {
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold">Управление сеансами</h2>
-        <button
-          onClick={() => {
-            resetForm();
-            setShowModal(true);
-          }}
-          className="bg-primary text-white px-4 py-2 rounded hover:bg-opacity-90 transition flex items-center gap-2"
-        >
-          <span>➕</span> Добавить сеанс
-        </button>
-      </div>
+    <>
+      <AccordionSection title="Управление сеансами" sectionNumber={1}>
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={() => {
+              resetForm();
+              setShowModal(true);
+            }}
+            className="conf-step__button conf-step__button-accent"
+          >
+            + Добавить сеанс
+          </button>
+        </div>
 
-      {/* Таблица сеансов */}
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <table className="min-w-full">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Фильм
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Зал
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Время
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Цена (обычный/VIP)
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Действия
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {screenings.map(screening => (
-              <tr key={screening.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4">
-                  <div className="font-medium">{screening.movie_details?.title}</div>
-                </td>
-                <td className="px-6 py-4">
-                  {screening.hall_details?.name}
-                </td>
-                <td className="px-6 py-4">
-                  {formatDateTime(screening.start_time)}
-                </td>
-                <td className="px-6 py-4">
-                  {screening.price_standard} / {screening.price_vip} ₽
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleEdit(screening)}
-                      className="text-blue-600 hover:text-blue-900 transition"
-                      title="Редактировать"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => handleDelete(screening.id)}
-                      className="text-red-600 hover:text-red-900 transition"
-                      title="Удалить"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        {screenings.length === 0 ? (
+          <div className="text-center py-8 bg-white rounded shadow">
+            <p className="text-gray-500">Нет сеансов. Создайте первый сеанс!</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded shadow overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="p-3 text-left">Фильм</th>
+                  <th className="p-3 text-left">Зал</th>
+                  <th className="p-3 text-left">Время</th>
+                  <th className="p-3 text-left">Цена (обыч/VIP)</th>
+                  <th className="p-3 text-left">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {screenings.map((screening) => (
+                  <tr key={screening.id} className="border-t hover:bg-gray-50">
+                    <td className="p-3">{screening.movie_details?.title || '—'}</td>
+                    <td className="p-3">{screening.hall_details?.name || '—'}</td>
+                    <td className="p-3">{formatDateTime(screening.start_time)}</td>
+                    <td className="p-3">{screening.price_standard} / {screening.price_vip} ₽</td>
+                    <td className="p-3">
+                      <button
+                        onClick={() => handleEdit(screening)}
+                        className="mr-2 text-blue-600 hover:text-blue-800"
+                        title="Редактировать"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => handleDelete(screening.id)}
+                        className="text-red-600 hover:text-red-800"
+                        title="Удалить"
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AccordionSection>
 
       {/* Модальное окно */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-2xl font-bold mb-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full max-h-screen overflow-y-auto">
+            <h2 className="text-2xl font-bold mb-4">
               {editingScreening ? 'Редактировать сеанс' : 'Новый сеанс'}
-            </h3>
+            </h2>
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Фильм *
+                <label className="block mb-1 font-medium">
+                  Фильм <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="movie"
                   value={formData.movie}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className={`w-full p-2 border rounded ${validationErrors.movie ? 'border-red-500' : ''}`}
                   required
                 >
                   <option value="">Выберите фильм</option>
@@ -231,17 +331,20 @@ const AdminScreenings = () => {
                     </option>
                   ))}
                 </select>
+                {validationErrors.movie && (
+                  <p className="text-red-500 text-sm mt-1">{validationErrors.movie}</p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Зал *
+                <label className="block mb-1 font-medium">
+                  Зал <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="hall"
                   value={formData.hall}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className={`w-full p-2 border rounded ${validationErrors.hall ? 'border-red-500' : ''}`}
                   required
                 >
                   <option value="">Выберите зал</option>
@@ -251,26 +354,32 @@ const AdminScreenings = () => {
                     </option>
                   ))}
                 </select>
+                {validationErrors.hall && (
+                  <p className="text-red-500 text-sm mt-1">{validationErrors.hall}</p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Время начала *
+                <label className="block mb-1 font-medium">
+                  Время начала <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="datetime-local"
                   name="start_time"
                   value={formData.start_time}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className={`w-full p-2 border rounded ${validationErrors.start_time ? 'border-red-500' : ''}`}
                   required
                 />
+                {validationErrors.start_time && (
+                  <p className="text-red-500 text-sm mt-1">{validationErrors.start_time}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Цена обычного места *
+                  <label className="block mb-1 font-medium">
+                    Цена обычного <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -279,13 +388,16 @@ const AdminScreenings = () => {
                     onChange={handleInputChange}
                     min="0"
                     step="10"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={`w-full p-2 border rounded ${validationErrors.price_standard ? 'border-red-500' : ''}`}
                     required
                   />
+                  {validationErrors.price_standard && (
+                    <p className="text-red-500 text-sm mt-1">{validationErrors.price_standard}</p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Цена VIP места *
+                  <label className="block mb-1 font-medium">
+                    Цена VIP <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -294,26 +406,29 @@ const AdminScreenings = () => {
                     onChange={handleInputChange}
                     min="0"
                     step="10"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={`w-full p-2 border rounded ${validationErrors.price_vip ? 'border-red-500' : ''}`}
                     required
                   />
+                  {validationErrors.price_vip && (
+                    <p className="text-red-500 text-sm mt-1">{validationErrors.price_vip}</p>
+                  )}
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-3 mt-6">
+              <div className="flex justify-end gap-2 mt-6">
                 <button
                   type="button"
                   onClick={() => {
                     setShowModal(false);
                     resetForm();
                   }}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition"
+                  className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-primary text-white rounded hover:bg-opacity-90 transition"
+                  className="px-4 py-2 bg-primary text-white rounded hover:bg-opacity-90"
                 >
                   {editingScreening ? 'Сохранить' : 'Создать'}
                 </button>
@@ -322,7 +437,7 @@ const AdminScreenings = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

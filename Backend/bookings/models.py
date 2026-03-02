@@ -43,8 +43,9 @@ class Booking(models.Model):
         verbose_name='Код бронирования',
         db_index=True  # Краткая форма индекса
     )
-    price = models.PositiveIntegerField(
-        verbose_name='Цена',
+    price = models.DecimalField(
+        max_digits=8, 
+        decimal_places=2, 
         default=0
     )
     status = models.CharField(
@@ -97,11 +98,9 @@ class Booking(models.Model):
         """
         Переопределенный save для генерации кода и QR перед сохранением
         """
-        # Генерируем код бронирования, если его нет
         if not self.booking_code:
             self.booking_code = self.generate_booking_code()
         
-        # Генерируем QR-код, если его нет
         if not self.qr_code:
             qr_image = self.generate_qr_code()
             if qr_image:

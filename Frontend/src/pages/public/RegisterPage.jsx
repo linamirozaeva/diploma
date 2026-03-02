@@ -21,7 +21,6 @@ const RegisterPage = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
-    // Очищаем ошибку для этого поля
     if (errors[e.target.name]) {
       setErrors({
         ...errors,
@@ -42,7 +41,6 @@ const RegisterPage = () => {
     const result = await register(formData);
     
     if (result.success) {
-      // После успешной регистрации перенаправляем на страницу входа
       navigate('/login', { 
         state: { message: 'Регистрация успешна! Теперь вы можете войти.' }
       });
@@ -53,7 +51,7 @@ const RegisterPage = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-cover bg-center py-12"
-         style={{backgroundImage: 'url(/src/assets/background.jpg)'}}>
+         style={{backgroundImage: 'url(/src/assets/background_client.jpg)'}}>
       <div className="bg-white bg-opacity-95 p-8 rounded-lg w-full max-w-2xl">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-black uppercase text-secondary">
@@ -65,10 +63,11 @@ const RegisterPage = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Имя пользователя */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
               Имя пользователя *
             </label>
             <input
+              id="username"
               type="text"
               name="username"
               value={formData.username}
@@ -85,10 +84,11 @@ const RegisterPage = () => {
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
               Email *
             </label>
             <input
+              id="email"
               type="email"
               name="email"
               value={formData.email}
@@ -106,10 +106,11 @@ const RegisterPage = () => {
           {/* Имя и фамилия */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-2">
                 Имя
               </label>
               <input
+                id="first_name"
                 type="text"
                 name="first_name"
                 value={formData.first_name}
@@ -118,10 +119,11 @@ const RegisterPage = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-2">
                 Фамилия
               </label>
               <input
+                id="last_name"
                 type="text"
                 name="last_name"
                 value={formData.last_name}
@@ -133,10 +135,11 @@ const RegisterPage = () => {
 
           {/* Телефон */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
               Телефон
             </label>
             <input
+              id="phone"
               type="tel"
               name="phone"
               value={formData.phone}
@@ -148,10 +151,11 @@ const RegisterPage = () => {
 
           {/* Пароль */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
               Пароль *
             </label>
             <input
+              id="password"
               type="password"
               name="password"
               value={formData.password}
@@ -168,10 +172,11 @@ const RegisterPage = () => {
 
           {/* Подтверждение пароля */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="password2" className="block text-sm font-medium text-gray-700 mb-2">
               Подтверждение пароля *
             </label>
             <input
+              id="password2"
               type="password"
               name="password2"
               value={formData.password2}

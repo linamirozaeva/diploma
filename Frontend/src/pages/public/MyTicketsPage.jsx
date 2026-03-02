@@ -21,7 +21,14 @@ const MyTicketsPage = () => {
   const fetchBookings = async () => {
     try {
       const response = await api.get('/bookings/my_bookings/');
-      setBookings(response.data);
+      
+      if (Array.isArray(response.data)) {
+        setBookings(response.data);
+      } else if (response.data && Array.isArray(response.data.bookings)) {
+        setBookings(response.data.bookings);
+      } else {
+        setBookings([]);
+      }
     } catch (error) {
       console.error('Error fetching bookings:', error);
     } finally {
@@ -33,8 +40,8 @@ const MyTicketsPage = () => {
     if (!dateString) return '—';
     const date = new Date(dateString);
     return date.toLocaleString('ru-RU', {
-      day: '2-digit',
-      month: '2-digit',
+      day: 'numeric',
+      month: 'long',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
@@ -46,121 +53,130 @@ const MyTicketsPage = () => {
       case 'confirmed': return 'Подтверждено';
       case 'cancelled': return 'Отменено';
       case 'used': return 'Использовано';
-      default: return status;
-    }
-  };
-
-  const getStatusClass = (status) => {
-    switch(status) {
-      case 'confirmed': return 'bg-green-100 text-green-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      case 'used': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return status || 'Неизвестно';
     }
   };
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-xl text-gray-600">Загрузка билетов...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
       </div>
     );
   }
 
+  const bookingsArray = Array.isArray(bookings) ? bookings : [];
+
   return (
-    <main className="container mx-auto px-4 py-8 relative z-10">
+    <main className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8 text-white">Мои билеты</h1>
 
-      {bookings.length === 0 ? (
-        <div className="text-center py-12 bg-white bg-opacity-95 rounded-lg relative z-20">
-          <p className="text-xl text-gray-600 mb-4">У вас пока нет билетов</p>
-          <Link
-            to="/"
-            className="bg-primary text-white px-6 py-3 rounded-lg hover:bg-opacity-90 transition inline-block"
-          >
-            Купить билеты
-          </Link>
+      {bookingsArray.length === 0 ? (
+        <div className="max-w-2xl mx-auto">
+          <section className="ticket">
+            <header className="tichet__check">
+              <h2 className="ticket__check-title">Нет билетов</h2>
+            </header>
+            <div className="ticket__info-wrapper text-center">
+              <p className="ticket__info">У вас пока нет забронированных билетов</p>
+              <Link to="/" className="acceptin-button inline-block mt-4">
+                Купить билеты
+              </Link>
+            </div>
+          </section>
         </div>
       ) : (
-        <div className="grid gap-6 relative z-20">
-          {bookings.map((booking) => {
-            // Получаем данные из разных возможных структур ответа API
+        <div className="space-y-6">
+          {bookingsArray.map((booking) => {
             const movieTitle = booking.movie_details?.title || 
                               booking.screening_details?.movie_title || 
+                              booking.movie_title ||
                               'Фильм';
             const hallName = booking.hall_details?.name || 
                             booking.screening_details?.hall_name || 
+                            booking.hall_name ||
                             'Зал';
-            const seatRow = booking.seat_details?.row || '—';
-            const seatNumber = booking.seat_details?.number || '—';
-            const startTime = booking.screening_details?.start_time;
+            const seatRow = booking.seat_details?.row || booking.row || '—';
+            const seatNumber = booking.seat_details?.number || booking.number || '—';
+            const startTime = booking.screening_details?.start_time || booking.start_time;
             const price = booking.price || 0;
+            const status = booking.status || 'confirmed';
             
+            // Формируем данные для QR-кода
+            const qrData = JSON.stringify({
+              code: booking.booking_code,
+              movie: movieTitle,
+              hall: hallName,
+              row: seatRow,
+              seat: seatNumber,
+              time: startTime,
+            });
+
             return (
-              <div key={booking.id} className="bg-white bg-opacity-95 rounded-lg p-6 shadow-lg relative z-20 hover:shadow-xl transition">
-                <div className="flex flex-col md:flex-row gap-6">
-                  {/* QR-код */}
-                  <div className="flex-shrink-0 flex justify-center md:justify-start">
-                    <QRCodeSVG
-                      value={JSON.stringify({
-                        code: booking.booking_code,
-                        movie: movieTitle,
-                        row: seatRow,
-                        seat: seatNumber,
-                        time: startTime
-                      })}
-                      size={120}
-                      level="H"
-                      className="border-2 border-gray-300 p-1 rounded"
-                    />
-                  </div>
-
-                  {/* Информация о билете */}
-                  <div className="flex-grow">
-                    <div className="flex flex-col md:flex-row justify-between items-start gap-4 mb-4">
-                      <h3 className="text-xl font-bold">{movieTitle}</h3>
-                      <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusClass(booking.status)}`}>
-                        {getStatusText(booking.status)}
-                      </span>
-                    </div>
+              <div key={booking.id} className="max-w-2xl mx-auto">
+                <section className="ticket">
+                  <header className="tichet__check">
+                    <h2 className="ticket__check-title">Электронный билет</h2>
+                  </header>
+                  
+                  <div className="ticket__info-wrapper">
+                    <p className="ticket__info">
+                      На фильм: <span className="ticket__details ticket__title">{movieTitle}</span>
+                    </p>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-gray-500 text-xs mb-1">Код бронирования</p>
-                        <p className="font-mono font-bold break-all">{booking.booking_code}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-gray-500 text-xs mb-1">Зал</p>
-                        <p className="font-bold">{hallName}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-gray-500 text-xs mb-1">Ряд / Место</p>
-                        <p className="font-bold">{seatRow} / {seatNumber}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-gray-500 text-xs mb-1">Время сеанса</p>
-                        <p className="font-bold">{formatDateTime(startTime)}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-gray-500 text-xs mb-1">Стоимость</p>
-                        <p className="font-bold">{price} ₽</p>
-                      </div>
+                    <p className="ticket__info">
+                      Места: <span className="ticket__details ticket__chairs">
+                        Ряд {seatRow}, Место {seatNumber}
+                      </span>
+                    </p>
+                    
+                    <p className="ticket__info">
+                      В зале: <span className="ticket__details ticket__hall">{hallName}</span>
+                    </p>
+                    
+                    <p className="ticket__info">
+                      Начало сеанса: <span className="ticket__details ticket__start">
+                        {formatDateTime(startTime)}
+                      </span>
+                    </p>
+                    
+                    <p className="ticket__info">
+                      Статус: <span className="ticket__details">
+                        {getStatusText(status)}
+                      </span>
+                    </p>
+                    
+                    <p className="ticket__info">
+                      Стоимость: <span className="ticket__details ticket__cost">{price}</span> рублей
+                    </p>
+
+                    {/* QR-код */}
+                    <div className="flex justify-center my-6">
+                      <QRCodeSVG
+                        value={qrData}
+                        size={200}
+                        level="H"
+                        includeMargin={true}
+                        className="ticket__info-qr"
+                      />
+                    </div>
+
+                    {/* Подсказки */}
+                    <p className="ticket__hint">
+                      Покажите QR-код нашему контроллеру для подтверждения бронирования.
+                    </p>
+                    <p className="ticket__hint">
+                      Приятного просмотра!
+                    </p>
+
+                    {/* Кнопка для возврата (опционально) */}
+                    <div className="text-center mt-6">
+                      <Link to="/" className="text-primary hover:underline">
+                        ← На главную
+                      </Link>
                     </div>
                   </div>
-
-                  {/* Кнопка просмотра */}
-                  <div className="flex-shrink-0 flex items-center justify-center md:justify-end">
-                    <Link
-                      to={`/ticket/${booking.id}`}
-                      className="bg-primary text-white px-6 py-3 rounded-lg hover:bg-opacity-90 transition text-center w-full md:w-auto"
-                    >
-                      Подробнее
-                    </Link>
-                  </div>
-                </div>
+                </section>
               </div>
             );
           })}

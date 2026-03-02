@@ -6,13 +6,19 @@ class Screening(models.Model):
     movie = models.ForeignKey(Movie, on_delete=models.CASCADE, related_name='screenings')
     hall = models.ForeignKey(CinemaHall, on_delete=models.CASCADE, related_name='screenings')
     start_time = models.DateTimeField(verbose_name='Время начала')
-    end_time = models.DateTimeField(verbose_name='Время окончания')
+    end_time = models.DateTimeField(verbose_name='Время окончания', blank=True, null=True)    
     price_standard = models.PositiveIntegerField(verbose_name='Цена за обычное место', default=250)
     price_vip = models.PositiveIntegerField(verbose_name='Цена за VIP место', default=350)
     is_active = models.BooleanField(default=True, verbose_name='Активен')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    def save(self, *args, **kwargs):
+        """Автоматически рассчитываем время окончания"""
+        if not self.end_time and self.start_time and self.movie:
+            self.end_time = self.start_time + timezone.timedelta(minutes=self.movie.duration)
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = 'Сеанс'
         verbose_name_plural = 'Сеансы'

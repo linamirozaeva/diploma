@@ -117,79 +117,82 @@ class ScreeningViewSet(viewsets.ModelViewSet):
         
         return Response(result)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def book_seats(self, request, pk=None):
         """
         Забронировать места на сеанс
         POST /api/screenings/{id}/book_seats/
         Только для авторизованных пользователей
         """
-        from bookings.models import Booking  # ← ВАЖНО: импорт внутри функции!
+        from bookings.models import Booking
+        from bookings.serializers import BookingListSerializer
         import uuid
-        
+    
         screening = self.get_object()
-        
-        # Проверка авторизации
+    
+        # Проверка авторизации (хотя permission_classes уже должна это делать)
         if not request.user.is_authenticated:
             return Response(
                 {'error': 'Необходимо авторизоваться'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        
+    
         # Проверка, что сеанс еще не начался
         if screening.start_time < timezone.now():
             return Response(
                 {'error': 'Нельзя забронировать билеты на прошедший сеанс'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+    
         seat_ids = request.data.get('seat_ids', [])
         if not seat_ids:
             return Response(
                 {'error': 'Не выбраны места'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+    
         # Проверяем, что места существуют в этом зале
         seats = Seat.objects.filter(
             id__in=seat_ids,
             hall=screening.hall,
             is_active=True
         )
-        
+    
         if len(seats) != len(seat_ids):
             return Response(
                 {'error': 'Некоторые места не найдены или недоступны'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+    
         # Проверяем, что места свободны
         booked_seats = Booking.objects.filter(
             screening=screening,
             seat_id__in=seat_ids,
             status='confirmed'
         ).exists()
-        
+    
         if booked_seats:
             return Response(
                 {'error': 'Некоторые места уже заняты'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+    
         # Создаем бронирования
         bookings = []
         for seat in seats:
+            price = screening.price_vip if seat.seat_type == 'vip' else screening.price_standard
+        
             booking = Booking.objects.create(
                 screening=screening,
                 user=request.user,
                 seat=seat,
                 booking_code=str(uuid.uuid4())[:8].upper(),
-                status='confirmed'
+                status='confirmed',
+                price=price
             )
             bookings.append(booking)
-        
-        from bookings.serializers import BookingListSerializer as BookingSerializer
-        serializer = BookingSerializer(bookings, many=True)
+    
+        serializer = BookingListSerializer(bookings, many=True)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], permission_classes=[IsAdminUser])

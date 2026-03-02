@@ -1,28 +1,14 @@
 import React, { useState } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Notification from '../../components/ui/Notification';
 
 const AdminLayout = () => {
-  const { logout, user } = useAuth();
-  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [notification, setNotification] = useState(null);
 
-  const menuItems = [
-    { path: '/admin', label: 'Дашборд', icon: '📊' },
-    { path: '/admin/halls', label: 'Залы', icon: '🎬' },
-    { path: '/admin/movies', label: 'Фильмы', icon: '📽️' },
-    { path: '/admin/screenings', label: 'Сеансы', icon: '⏰' },
-    { path: '/admin/bookings', label: 'Бронирования', icon: '🎫' },
-  ];
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="admin-layout">
       {/* Уведомления */}
       {notification && (
         <Notification
@@ -32,53 +18,88 @@ const AdminLayout = () => {
         />
       )}
 
-      {/* Верхняя панель */}
-      <header className="bg-secondary text-white shadow-lg">
-        <div className="container mx-auto px-4">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-bold">Администраторская</h1>
-              <span className="text-sm opacity-75">{user?.username}</span>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-red-600 rounded hover:bg-red-700 transition"
-            >
-              Выйти
-            </button>
-          </div>
+      <header className="page-header">
+        <h1 className="page-header__title">Идём<span>в</span>кино</h1>
+        <span className="page-header__subtitle">Администраторррская</span>
+        <div className="admin-user absolute top-4 right-4 flex items-center gap-4">
+          <span className="text-white">{user?.username}</span>
+          <button 
+            onClick={logout}
+            className="conf-step__button conf-step__button-regular"
+          >
+            Выйти
+          </button>
         </div>
       </header>
 
-      <div className="flex">
-        {/* Боковое меню */}
-        <aside className="w-64 bg-white shadow-lg min-h-screen">
-          <nav className="p-4">
-            {menuItems.map(item => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `flex items-center space-x-3 px-4 py-3 rounded-lg mb-2 transition ${
-                    isActive
-                      ? 'bg-primary text-white'
-                      : 'hover:bg-gray-100 text-gray-700'
-                  }`
-                }
-                end={item.path === '/admin'}
-              >
-                <span className="text-xl">{item.icon}</span>
-                <span>{item.label}</span>
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
+      <nav className="admin-nav flex gap-2 px-8 py-4 bg-white bg-opacity-95">
+        <NavLink 
+          to="/admin" 
+          end
+          className={({ isActive }) => 
+            `px-4 py-2 rounded transition ${
+              isActive 
+                ? 'bg-primary text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`
+          }
+        >
+          Дашборд
+        </NavLink>
+        <NavLink 
+          to="/admin/halls" 
+          className={({ isActive }) => 
+            `px-4 py-2 rounded transition ${
+              isActive 
+                ? 'bg-primary text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`
+          }
+        >
+          Залы
+        </NavLink>
+        <NavLink 
+          to="/admin/movies" 
+          className={({ isActive }) => 
+            `px-4 py-2 rounded transition ${
+              isActive 
+                ? 'bg-primary text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`
+          }
+        >
+          Фильмы
+        </NavLink>
+        <NavLink 
+          to="/admin/screenings" 
+          className={({ isActive }) => 
+            `px-4 py-2 rounded transition ${
+              isActive 
+                ? 'bg-primary text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`
+          }
+        >
+          Сеансы
+        </NavLink>
+        <NavLink 
+          to="/admin/bookings" 
+          className={({ isActive }) => 
+            `px-4 py-2 rounded transition ${
+              isActive 
+                ? 'bg-primary text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`
+          }
+        >
+          Бронирования
+        </NavLink>
+      </nav>
 
-        {/* Основной контент */}
-        <main className="flex-1 p-8">
-          <Outlet context={{ setNotification }} />
-        </main>
-      </div>
+      {/* Передаем setNotification через контекст Outlet */}
+      <main className="conf-steps">
+        <Outlet context={{ setNotification }} />
+      </main>
     </div>
   );
 };

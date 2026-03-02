@@ -59,7 +59,6 @@ class BookingDetailSerializer(serializers.ModelSerializer):
         """Детальная информация о фильме"""
         if obj.screening and obj.screening.movie:
             movie = obj.screening.movie
-            # Убираем age_rating, так как его нет в модели
             return {
                 'id': movie.id,
                 'title': movie.title,
@@ -217,7 +216,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 status='confirmed'
             )
             
-            booking.save()  # Здесь сработает переопределенный save() с генерацией QR-кода
+            booking.save()  
             bookings.append(booking)
         
         # Возвращаем список созданных бронирований

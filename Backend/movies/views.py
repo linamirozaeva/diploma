@@ -79,8 +79,18 @@ class MovieViewSet(viewsets.ModelViewSet):
         """Создание фильма (только для админов)"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # Важно: устанавливаем is_active=True по умолчанию
+        if 'is_active' not in serializer.validated_data:
+            serializer.validated_data['is_active'] = True
+
         self.perform_create(serializer)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        # Возвращаем созданный фильм с полными данными
+        movie = serializer.instance
+        response_serializer = MovieDetailSerializer(movie)
+
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def now_showing(self, request):

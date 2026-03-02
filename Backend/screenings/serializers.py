@@ -1,119 +1,44 @@
 from rest_framework import serializers
 from django.utils import timezone
+from datetime import timedelta
 from .models import Screening
-from .validators import ScreeningValidator
+from movies.serializers import MovieListSerializer
+from cinemas.serializers import CinemaHallSerializer
 
 class ScreeningListSerializer(serializers.ModelSerializer):
     """
     Сериализатор для списка сеансов
     """
-    movie_title = serializers.CharField(source='movie.title', read_only=True, default='')
-    hall_name = serializers.CharField(source='hall.name', read_only=True, default='')
+    movie_details = MovieListSerializer(source='movie', read_only=True)
+    hall_details = CinemaHallSerializer(source='hall', read_only=True)
     
     class Meta:
         model = Screening
-        fields = ['id', 'movie', 'movie_title', 'hall', 'hall_name', 
-                  'start_time', 'end_time', 'price_standard', 'price_vip', 'is_active']
+        fields = [
+            'id', 'movie', 'movie_details', 'hall', 'hall_details',
+            'start_time', 'end_time', 'price_standard', 'price_vip',
+            'is_active', 'created_at'
+        ]
 
 class ScreeningDetailSerializer(serializers.ModelSerializer):
     """
     Сериализатор для детальной информации о сеансе
     """
-    movie_details = serializers.SerializerMethodField()
-    hall_details = serializers.SerializerMethodField()
+    movie_details = MovieListSerializer(source='movie', read_only=True)
+    hall_details = CinemaHallSerializer(source='hall', read_only=True)
+    available_seats = serializers.IntegerField(source='available_seats_count', read_only=True)
+    is_future = serializers.BooleanField(read_only=True)
+    is_ongoing = serializers.BooleanField(read_only=True)
+    is_past = serializers.BooleanField(read_only=True)
     
     class Meta:
         model = Screening
-        fields = ['id', 'movie', 'movie_details', 'hall', 'hall_details', 
-                  'start_time', 'end_time', 'price_standard', 'price_vip', 
-                  'is_active', 'created_at', 'updated_at']
-    
-    def get_movie_details(self, obj):
-        if obj.movie:
-            return {
-                'id': obj.movie.id,
-                'title': obj.movie.title,
-                'duration': obj.movie.duration,
-                'poster': obj.movie.poster.url if obj.movie.poster else None
-            }
-        return None
-    
-    def get_hall_details(self, obj):
-        if obj.hall:
-            return {
-                'id': obj.hall.id,
-                'name': obj.hall.name,
-                'total_seats': obj.hall.total_seats
-            }
-        return None
-
-class ScreeningCreateSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор ТОЛЬКО для создания сеансов
-    """
-    class Meta:
-        model = Screening
-        fields = ['id', 'movie', 'hall', 'start_time', 'end_time', 'price_standard', 'price_vip', 'is_active']
-        read_only_fields = ['id']  # ID только для чтения, но будет возвращаться
-    
-    def validate(self, data):
-        # Проверка времени и пересечений
-        time_errors = ScreeningValidator.validate_screening_times(
-            start_time=data['start_time'],
-            end_time=data['end_time'],
-            hall=data['hall'],
-            instance=self.instance
-        )
-        
-        if time_errors:
-            raise serializers.ValidationError(time_errors)
-        
-        # Проверка соответствия длительности фильма
-        if data.get('movie'):
-            movie_errors = ScreeningValidator.validate_screening_with_movie(
-                movie=data['movie'],
-                start_time=data['start_time'],
-                end_time=data['end_time']
-            )
-            
-            if movie_errors:
-                raise serializers.ValidationError(movie_errors)
-        
-        # Проверка цен
-        if data['price_standard'] < 0:
-            raise serializers.ValidationError({
-                "price_standard": "Цена не может быть отрицательной"
-            })
-        
-        if data['price_vip'] < 0:
-            raise serializers.ValidationError({
-                "price_vip": "Цена не может быть отрицательной"
-            })
-        
-        return data
-
-class ScreeningUpdateSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор ТОЛЬКО для обновления сеансов
-    """
-    class Meta:
-        model = Screening
-        fields = ['id', 'movie', 'hall', 'start_time', 'end_time', 'price_standard', 'price_vip', 'is_active']
-        read_only_fields = ['id', 'created_at', 'updated_at']
-    
-    def validate(self, data):
-        # Та же валидация, что и выше
-        time_errors = ScreeningValidator.validate_screening_times(
-            start_time=data['start_time'],
-            end_time=data['end_time'],
-            hall=data['hall'],
-            instance=self.instance
-        )
-        
-        if time_errors:
-            raise serializers.ValidationError(time_errors)
-        
-        return data
+        fields = [
+            'id', 'movie', 'movie_details', 'hall', 'hall_details',
+            'start_time', 'end_time', 'price_standard', 'price_vip',
+            'is_active', 'available_seats', 'is_future', 'is_ongoing', 'is_past',
+            'created_at', 'updated_at'
+        ]
 
 class ScreeningCreateUpdateSerializer(serializers.ModelSerializer):
     """
@@ -121,95 +46,67 @@ class ScreeningCreateUpdateSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = Screening
-        fields = ['id', 'movie', 'hall', 'start_time', 'end_time', 'price_standard', 'price_vip', 'is_active']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['movie', 'hall', 'start_time', 'price_standard', 'price_vip']
     
-    def validate(self, data):
-        # Проверка времени и пересечений
-        time_errors = ScreeningValidator.validate_screening_times(
-            start_time=data['start_time'],
-            end_time=data['end_time'],
-            hall=data['hall'],
-            instance=self.instance
-        )
-        
-        if time_errors:
-            raise serializers.ValidationError(time_errors)
-        
-        # Проверка соответствия длительности фильма
-        if data.get('movie'):
-            movie_errors = ScreeningValidator.validate_screening_with_movie(
-                movie=data['movie'],
-                start_time=data['start_time'],
-                end_time=data['end_time']
-            )
-            
-            if movie_errors:
-                raise serializers.ValidationError(movie_errors)
-        
-        # Проверка цен
-        if data['price_standard'] < 0:
-            raise serializers.ValidationError({
-                "price_standard": "Цена не может быть отрицательной"
-            })
-        
-        if data['price_vip'] < 0:
-            raise serializers.ValidationError({
-                "price_vip": "Цена не может быть отрицательной"
-            })
-        
-        return data
-    """
-    Сериализатор для создания и обновления сеансов с валидацией
-    """
-    
-    class Meta:
-        model = Screening
-        fields = ('movie', 'hall', 'start_time', 'end_time', 'price_standard', 'price_vip', 'is_active')
+    def validate_start_time(self, value):
+        """Проверка времени начала"""
+        if value < timezone.now():
+            raise serializers.ValidationError("Время начала сеанса не может быть в прошлом")
+        return value
     
     def validate(self, data):
         """
-        Комплексная валидация сеанса
+        Валидация сеанса
         """
-        errors = {}
+        start_time = data.get('start_time')
+        hall = data.get('hall')
+        movie = data.get('movie')
         
-        # 1. Проверка времени и пересечений
-        time_errors = ScreeningValidator.validate_screening_times(
-            start_time=data['start_time'],
-            end_time=data['end_time'],
-            hall=data['hall'],
-            instance=self.instance
+        if not start_time or not hall or not movie:
+            return data
+        
+        # Рассчитываем время окончания для проверки пересечений
+        end_time = start_time + timedelta(minutes=movie.duration)
+        
+        # Проверяем пересечение с другими сеансами
+        conflicting = Screening.objects.filter(
+            hall=hall,
+            start_time__lt=end_time,
+            end_time__gt=start_time
         )
         
-        if time_errors:
-            raise serializers.ValidationError(time_errors)
+        if self.instance:
+            conflicting = conflicting.exclude(pk=self.instance.pk)
         
-        # 2. Проверка соответствия длительности фильма
-        if data.get('movie'):
-            movie_errors = ScreeningValidator.validate_screening_with_movie(
-                movie=data['movie'],
-                start_time=data['start_time'],
-                end_time=data['end_time']
+        if conflicting.exists():
+            raise serializers.ValidationError(
+                "Это время уже занято другим сеансом в выбранном зале"
             )
-            
-            if movie_errors:
-                raise serializers.ValidationError(movie_errors)
-        
-        # 3. Проверка цен
-        price_errors = ScreeningValidator.validate_price_range(
-            price_standard=data['price_standard'],
-            price_vip=data['price_vip']
-        )
-        
-        if price_errors:
-            raise serializers.ValidationError(price_errors)
         
         return data
-
-class ScreeningDateFilterSerializer(serializers.Serializer):
-    """
-    Сериализатор для фильтрации сеансов по дате
-    """
-    date = serializers.DateField(required=False)
-    movie_id = serializers.IntegerField(required=False)
-    hall_id = serializers.IntegerField(required=False)
+    
+    def create(self, validated_data):
+        """Создание сеанса с автоматическим расчетом end_time"""
+        movie = validated_data['movie']
+        start_time = validated_data['start_time']
+        end_time = start_time + timedelta(minutes=movie.duration)
+        
+        screening = Screening.objects.create(
+            **validated_data,
+            end_time=end_time
+        )
+        return screening
+    
+    def update(self, instance, validated_data):
+        """Обновление сеанса с пересчетом end_time"""
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Пересчитываем end_time если изменился фильм или время начала
+        if 'movie' in validated_data or 'start_time' in validated_data:
+            instance.end_time = instance.start_time + timedelta(
+                minutes=instance.movie.duration
+            )
+        
+        instance.save()
+        return instance

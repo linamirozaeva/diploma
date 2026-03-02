@@ -1,20 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import api from '../../services/api';
+import AccordionSection from './components/AccordionSection';
+import HallSelector from './components/HallSelector';
+import SeatGrid from './components/SeatGrid';
 
 const AdminHalls = () => {
   const [halls, setHalls] = useState([]);
+  const [selectedHall, setSelectedHall] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingHall, setEditingHall] = useState(null);
-  const { setNotification } = useOutletContext();
-  
-  const [formData, setFormData] = useState({
-    name: '',
+  const [hallConfig, setHallConfig] = useState({
     rows: 10,
-    seats_per_row: 12,
-    description: '',
+    seatsPerRow: 8,
+    seats: []
   });
+  const { setNotification } = useOutletContext();
 
   useEffect(() => {
     fetchHalls();
@@ -23,10 +23,16 @@ const AdminHalls = () => {
   const fetchHalls = async () => {
     try {
       const response = await api.get('/cinemas/halls/');
+      console.log('Fetched halls:', response.data);
       setHalls(response.data);
+      if (response.data.length > 0) {
+        setSelectedHall(response.data[0].id);
+        fetchHallSeats(response.data[0].id);
+      }
     } catch (error) {
+      console.error('Error fetching halls:', error);
       setNotification({
-        message: 'Ошибка загрузки залов: ' + (error.response?.data?.detail || error.message),
+        message: 'Ошибка загрузки залов',
         type: 'error'
       });
     } finally {
@@ -34,90 +40,223 @@ const AdminHalls = () => {
     }
   };
 
-  const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+  const fetchHallSeats = async (hallId) => {
+    try {
+      const response = await api.get(`/cinemas/halls/${hallId}/seats/`);
+      console.log('Fetched seats:', response.data);
+      
+      const seatsData = Array.isArray(response.data) ? response.data : 
+                       (response.data.seats ? response.data.seats : []);
+      
+      setHallConfig(prev => ({
+        ...prev,
+        seats: seatsData
+      }));
+    } catch (error) {
+      console.error('Error fetching seats:', error);
+      setHallConfig(prev => ({
+        ...prev,
+        seats: []
+      }));
+    }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleHallChange = (hallId) => {
+    setSelectedHall(hallId);
+    fetchHallSeats(hallId);
+  };
+
+  const handleSeatClick = async (seat) => {
     try {
-      if (editingHall) {
-        await api.put(`/cinemas/halls/${editingHall.id}/`, formData);
-        setNotification({ message: 'Зал успешно обновлен!', type: 'success' });
+      let newType = '';
+      
+      if (seat.seat_type === 'standard') {
+        newType = 'vip';
+      } else if (seat.seat_type === 'vip') {
+        newType = 'disabled';
+      } else if (seat.seat_type === 'disabled') {
+        newType = 'standard';
       } else {
-        await api.post('/cinemas/halls/', formData);
-        setNotification({ message: 'Зал успешно создан!', type: 'success' });
+        newType = 'standard';
       }
-      fetchHalls();
-      setShowModal(false);
-      resetForm();
-    } catch (error) {
+  
+      console.log(`Changing seat ${seat.id} from ${seat.seat_type} to ${newType}`);
+      console.log('Selected hall:', selectedHall);
+  
+      if (!selectedHall) {
+        setNotification({
+          message: 'Не выбран зал',
+          type: 'error'
+        });
+        return;
+      }
+  
+      const url = `/cinemas/halls/${selectedHall}/update_seat_type/`;
+      console.log('Sending request to:', url);
+      console.log('Request data:', {
+        seat_id: seat.id,
+        seat_type: newType
+      });
+  
+      const response = await api.post(url, {
+        seat_id: seat.id,
+        seat_type: newType
+      });
+  
+      console.log('Update response:', response.data);
+  
+      setHallConfig(prev => {
+        const updatedSeats = prev.seats.map(s => 
+          s.id === seat.id ? { ...s, seat_type: newType } : s
+        );
+        
+        return {
+          ...prev,
+          seats: updatedSeats
+        };
+      });
+  
+      const typeText = newType === 'standard' ? 'обычное' : 
+                       newType === 'vip' ? 'VIP' : 'заблокированное';
+      
       setNotification({
-        message: 'Ошибка сохранения: ' + (error.response?.data?.detail || error.message),
+        message: `Место изменено на ${typeText}`,
+        type: 'success'
+      });
+  
+    } catch (error) {
+      console.error('Error updating seat:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      console.error('Error URL:', error.config?.url);
+      
+      const errorMessage = error.response?.data?.error || 
+                           error.response?.data?.detail || 
+                           'Ошибка обновления места';
+      
+      setNotification({
+        message: errorMessage,
         type: 'error'
       });
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDeleteHall = async (hallId) => {
     if (window.confirm('Вы уверены, что хотите удалить этот зал?')) {
       try {
-        await api.delete(`/cinemas/halls/${id}/`);
-        setNotification({ message: 'Зал успешно удален!', type: 'success' });
-        fetchHalls();
-      } catch (error) {
+        await api.delete(`/cinemas/halls/${hallId}/`);
+        setHalls(halls.filter(h => h.id !== hallId));
         setNotification({
-          message: 'Ошибка удаления: ' + (error.response?.data?.detail || error.message),
+          message: 'Зал удален',
+          type: 'success'
+        });
+      } catch (error) {
+        console.error('Error deleting hall:', error);
+        setNotification({
+          message: 'Ошибка удаления зала',
           type: 'error'
         });
       }
     }
   };
 
-  const handleEdit = (hall) => {
-    setEditingHall(hall);
-    setFormData({
-      name: hall.name,
-      rows: hall.rows,
-      seats_per_row: hall.seats_per_row,
-      description: hall.description || '',
-    });
-    setShowModal(true);
-  };
+  const handleCreateHall = async () => {
+    const name = prompt('Введите название нового зала:');
+    if (!name) return;
 
-  const resetForm = () => {
-    setEditingHall(null);
-    setFormData({
-      name: '',
-      rows: 10,
-      seats_per_row: 12,
-      description: '',
-    });
-  };
-
-  const getSeatGrid = (hall) => {
-    const seats = [];
-    for (let row = 1; row <= hall.rows; row++) {
-      const rowSeats = [];
-      for (let seat = 1; seat <= hall.seats_per_row; seat++) {
-        rowSeats.push(
-          <div
-            key={`${row}-${seat}`}
-            className="w-6 h-6 bg-white border border-gray-300 rounded-sm inline-block mr-1 mb-1 hover:bg-gray-100 transition"
-            title={`Ряд ${row}, Место ${seat}`}
-          />
-        );
+    try {
+      const response = await api.post('/cinemas/halls/', {
+        name,
+        rows: 10,
+        seats_per_row: 8
+      });
+      
+      setHalls([...halls, response.data]);
+      setSelectedHall(response.data.id);
+      
+      const seats = [];
+      for (let row = 1; row <= 10; row++) {
+        for (let seat = 1; seat <= 8; seat++) {
+          seats.push({
+            id: `temp-${row}-${seat}`,
+            row,
+            number: seat,
+            seat_type: 'standard',
+            is_active: true
+          });
+        }
       }
-      seats.push(
-        <div key={row} className="flex justify-center mb-1">
-          {rowSeats}
-        </div>
-      );
+      
+      setHallConfig({
+        rows: 10,
+        seatsPerRow: 8,
+        seats
+      });
+      
+      setNotification({
+        message: 'Зал создан',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('Error creating hall:', error);
+      setNotification({
+        message: 'Ошибка создания зала',
+        type: 'error'
+      });
     }
-    return seats;
+  };
+
+  const handleSaveConfig = async () => {
+    try {
+      if (!selectedHall) {
+        setNotification({
+          message: 'Не выбран зал',
+          type: 'error'
+        });
+        return;
+      }
+  
+      console.log('Saving config for hall:', selectedHall);
+      console.log('Config:', {
+        rows: hallConfig.rows,
+        seats_per_row: hallConfig.seatsPerRow
+      });
+  
+      const response = await api.post(`/cinemas/halls/${selectedHall}/configure/`, {
+        rows: hallConfig.rows,
+        seats_per_row: hallConfig.seatsPerRow
+      });
+  
+      console.log('Save response:', response.data);
+      
+      await fetchHallSeats(selectedHall);
+      
+      setNotification({
+        message: 'Конфигурация зала сохранена',
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('Error saving hall config:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      
+      setNotification({
+        message: error.response?.data?.error || 'Ошибка сохранения конфигурации',
+        type: 'error'
+      });
+    }
+  };
+
+  const seatsByRow = () => {
+    if (!Array.isArray(hallConfig.seats) || hallConfig.seats.length === 0) {
+      return {};
+    }
+    
+    return hallConfig.seats.reduce((acc, seat) => {
+      if (!acc[seat.row]) acc[seat.row] = [];
+      acc[seat.row].push(seat);
+      return acc;
+    }, {});
   };
 
   if (loading) {
@@ -129,167 +268,114 @@ const AdminHalls = () => {
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold">Управление залами</h2>
-        <button
-          onClick={() => {
-            resetForm();
-            setShowModal(true);
-          }}
-          className="bg-primary text-white px-4 py-2 rounded hover:bg-opacity-90 transition flex items-center gap-2"
+    <div className="admin-halls-page">
+      {/* Секция 1: Управление залами */}
+      <AccordionSection title="Управление залами" sectionNumber={1}>
+        <p className="conf-step__paragraph">Доступные залы:</p>
+        <ul className="conf-step__list">
+          {halls.length > 0 ? halls.map(hall => (
+            <li key={hall.id} className="flex items-center justify-between">
+              <span>{hall.name}</span>
+              <button 
+                className="conf-step__button conf-step__button-trash"
+                onClick={() => handleDeleteHall(hall.id)}
+                title="Удалить зал"
+              />
+            </li>
+          )) : (
+            <li className="text-gray-500">Нет доступных залов</li>
+          )}
+        </ul>
+        <button 
+          className="conf-step__button conf-step__button-accent"
+          onClick={handleCreateHall}
         >
-          <span>➕</span> Добавить зал
+          Создать зал
         </button>
-      </div>
+      </AccordionSection>
 
-      {/* Список залов */}
-      <div className="grid grid-cols-1 gap-6">
-        {halls.map(hall => (
-          <div key={hall.id} className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-2xl font-bold">{hall.name}</h3>
-                <p className="text-gray-600">
-                  Рядов: {hall.rows} | Мест в ряду: {hall.seats_per_row} | Всего мест: {hall.total_seats}
-                </p>
-                {hall.description && (
-                  <p className="text-gray-500 mt-2">{hall.description}</p>
-                )}
-              </div>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => handleEdit(hall)}
-                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
-                  title="Редактировать"
-                >
-                  ✏️
-                </button>
-                <button
-                  onClick={() => handleDelete(hall.id)}
-                  className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition"
-                  title="Удалить"
-                >
-                  🗑️
-                </button>
-              </div>
-            </div>
-
-            {/* Схема зала */}
-            <div className="conf-step__hall">
-              <div className="conf-step__hall-wrapper">
-                {rows.map(row => (
-                  <div key={row} className="conf-step__row">
-                    {seats[row].map(seat => (
-                      <button
-                        key={seat.id}
-                        className={`conf-step__chair 
-                          ${seat.type === 'vip' ? 'conf-step__chair_vip' : ''}
-                          ${seat.disabled ? 'conf-step__chair_disabled' : 'conf-step__chair_standart'}
-                        `}
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
+      {/* Секция 2: Конфигурация залов */}
+      <AccordionSection title="Конфигурация залов" sectionNumber={2}>
+        <p className="conf-step__paragraph">Выберите зал для конфигурации:</p>
+        <HallSelector
+          halls={halls}
+          selectedHall={selectedHall}
+          onSelectHall={handleHallChange}
+        />
+        
+        <p className="conf-step__paragraph">
+          Укажите количество рядов и максимальное количество кресел в ряду:
+        </p>
+        <div className="conf-step__legend">
+          <label className="conf-step__label">
+            Рядов, шт
+            <input 
+              type="number" 
+              className="conf-step__input" 
+              placeholder="10" 
+              min="1"
+              max="20"
+              value={hallConfig.rows}
+              onChange={(e) => setHallConfig({...hallConfig, rows: parseInt(e.target.value) || 10})}
+            />
+          </label>
+          <span className="multiplier">x</span>
+          <label className="conf-step__label">
+            Мест, шт
+            <input 
+              type="number" 
+              className="conf-step__input" 
+              placeholder="8" 
+              min="1"
+              max="30"
+              value={hallConfig.seatsPerRow}
+              onChange={(e) => setHallConfig({...hallConfig, seatsPerRow: parseInt(e.target.value) || 8})}
+            />
+          </label>
+        </div>
+        
+        <p className="conf-step__paragraph">
+          Теперь вы можете указать типы кресел на схеме зала:
+        </p>
+        <div className="conf-step__legend flex flex-wrap gap-4 items-center">
+          <div className="flex items-center gap-2">
+            <span className="conf-step__chair conf-step__chair_standart"></span>
+            <span>— обычные кресла (клик для смены)</span>
           </div>
-        ))}
-      </div>
-
-      {/* Модальное окно */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-2xl font-bold mb-4">
-              {editingHall ? 'Редактировать зал' : 'Новый зал'}
-            </h3>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Название зала *
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  required
-                  placeholder="Например: Зал 1"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Рядов *
-                  </label>
-                  <input
-                    type="number"
-                    name="rows"
-                    value={formData.rows}
-                    onChange={handleInputChange}
-                    min="1"
-                    max="20"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Мест в ряду *
-                  </label>
-                  <input
-                    type="number"
-                    name="seats_per_row"
-                    value={formData.seats_per_row}
-                    onChange={handleInputChange}
-                    min="1"
-                    max="30"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Описание
-                </label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  rows="3"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="Дополнительная информация о зале"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false);
-                    resetForm();
-                  }}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-primary text-white rounded hover:bg-opacity-90 transition"
-                >
-                  {editingHall ? 'Сохранить' : 'Создать'}
-                </button>
-              </div>
-            </form>
+          <div className="flex items-center gap-2">
+            <span className="conf-step__chair conf-step__chair_vip"></span>
+            <span>— VIP кресла</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="conf-step__chair conf-step__chair_disabled"></span>
+            <span>— заблокированные</span>
           </div>
         </div>
-      )}
+        <p className="conf-step__hint text-sm text-gray-600 mt-2">
+          💡 Чтобы изменить вид кресла, нажмите по нему левой кнопкой мыши. 
+          Тип меняется по циклу: обычное → VIP → заблокированное → обычное
+        </p>
+
+        {/* Схема зала */}
+        {selectedHall && halls.length > 0 && (
+          <div className="mt-6">
+            <SeatGrid
+              seatsByRow={seatsByRow()}
+              onSeatClick={handleSeatClick}
+            />
+          </div>
+        )}
+
+        <fieldset className="conf-step__buttons text-center mt-6">
+          <button className="conf-step__button conf-step__button-regular">Отмена</button>
+          <button 
+            onClick={handleSaveConfig}
+            className="conf-step__button conf-step__button-accent"
+          >
+            Сохранить
+          </button>
+        </fieldset>
+      </AccordionSection>
     </div>
   );
 };

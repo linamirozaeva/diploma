@@ -85,12 +85,6 @@ const MoviePage = () => {
         <div className="flex flex-col md:flex-row gap-8">
           {/* Постер фильма */}
           <div className="md:w-1/3">
-            {/* ====================================================
-                КАРТИНКА: Постер фильма (детальная страница)
-                Файл: /media/posters/{movie.id}.jpg (из бэкенда)
-                Заглушка: /src/assets/no-poster.jpg
-                Размер: 300x450 пикселей (увеличенный для детальной страницы)
-                ==================================================== */}
             <img
               src={movie.poster_url || '/src/assets/no-poster.jpg'}
               alt={movie.title}

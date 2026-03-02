@@ -1,13 +1,13 @@
-from rest_framework import viewsets, permissions, status, filters
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from django.db.models import Q, Count
 from .models import CinemaHall, Seat
-from config.permissions import IsAdminOrReadOnly, IsAdminUser
 from .serializers import (
-    CinemaHallListSerializer, CinemaHallDetailSerializer,
-    CinemaHallCreateSerializer, SeatSerializer, SeatUpdateSerializer
+    CinemaHallSerializer,
+    CinemaHallCreateSerializer,
+    CinemaHallDetailSerializer,
+    SeatSerializer
 )
 
 class IsAdminOrReadOnly(permissions.BasePermission):
@@ -23,164 +23,212 @@ class CinemaHallViewSet(viewsets.ModelViewSet):
     """
     ViewSet для управления кинозалами
     
-    list: Все пользователи (включая гостей)
-    retrieve: Все пользователи
-    create: Только админы
-    update: Только админы
-    partial_update: Только админы
-    destroy: Только админы
+    list: Все пользователи (включая гостей) - получают список залов
+    retrieve: Все пользователи - получают детальную информацию о зале
+    create: Только админы - создают новый зал
+    update: Только админы - обновляют информацию о зале
+    partial_update: Только админы - частично обновляют зал
+    destroy: Только админы - удаляют зал
+    
+    Дополнительные действия:
+    seats: Получить все места зала (доступно всем)
+    update_seat_type: Обновить тип места (только админы)
+    configure: Перенастроить зал (только админы)
     """
     queryset = CinemaHall.objects.all()
-    permission_classes = [IsAdminOrReadOnly]  # Админы могут всё, остальные только чтение
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'description']
-    ordering_fields = ['name', 'rows', 'seats_per_row', 'created_at']
+    permission_classes = [IsAdminOrReadOnly]
     
     def get_queryset(self):
-        """Фильтрация залов по параметрам запроса"""
-        queryset = super().get_queryset()
+        """
+        Фильтрация залов
+        - Все видят только активные залы
+        - Админы могут видеть все залы с параметром include_inactive=true
+        """
+        queryset = CinemaHall.objects.all()
         
-        # Все видят только активные залы
-        is_active = self.request.query_params.get('is_active')
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        else:
-            # По умолчанию показываем только активные
+        # Фильтр по активности
+        include_inactive = self.request.query_params.get('include_inactive', False)
+        if not include_inactive:
             queryset = queryset.filter(is_active=True)
         
-        return queryset
+        return queryset.order_by('name')
     
     def get_serializer_class(self):
-        """Выбор сериализатора в зависимости от действия"""
+        """
+        Выбор сериализатора в зависимости от действия
+        """
         if self.action == 'create':
             return CinemaHallCreateSerializer
-        elif self.action == 'list':
-            return CinemaHallListSerializer
         elif self.action == 'retrieve':
             return CinemaHallDetailSerializer
-        return CinemaHallListSerializer
+        return CinemaHallSerializer  # Для list и других действий
     
     @action(detail=True, methods=['get'])
     def seats(self, request, pk=None):
         """
         Получить все места конкретного зала
+        GET /api/cinemas/halls/{id}/seats/
         Доступно всем пользователям
         """
         hall = self.get_object()
         seats = Seat.objects.filter(hall=hall, is_active=True).order_by('row', 'number')
-        
         serializer = SeatSerializer(seats, many=True)
-        return Response({
-            'hall_id': hall.id,
-            'hall_name': hall.name,
-            'total_seats': hall.total_seats,
-            'seats': serializer.data
-        })
+        return Response(serializer.data)
     
-    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    @action(detail=True, methods=['post'])
     def update_seat_type(self, request, pk=None):
         """
-        Обновить тип места - только для админов
+        Обновить тип места
+        POST /api/cinemas/halls/{id}/update_seat_type/
+        Только для администраторов
+        
+        Тело запроса:
+        {
+            "seat_id": 123,
+            "seat_type": "vip"  // standard, vip, disabled
+        }
         """
         hall = self.get_object()
         seat_id = request.data.get('seat_id')
         seat_type = request.data.get('seat_type')
         
+        if not seat_id or not seat_type:
+            return Response(
+                {'error': 'Необходимо указать seat_id и seat_type'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        valid_types = ['standard', 'vip', 'disabled']
+        if seat_type not in valid_types:
+            return Response(
+                {'error': f'Недопустимый тип места. Допустимые значения: {valid_types}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         seat = get_object_or_404(Seat, id=seat_id, hall=hall)
-        serializer = SeatUpdateSerializer(seat, data={'seat_type': seat_type}, partial=True)
+        seat.seat_type = seat_type
+        seat.save()
         
-        if serializer.is_valid():
-            serializer.save()
-            return Response(SeatSerializer(seat).data)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer = SeatSerializer(seat)
+        return Response(serializer.data)
     
-    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
-    def bulk_update_seats(self, request, pk=None):
+    @action(detail=True, methods=['post'])
+    def configure(self, request, pk=None):
         """
-        Массовое обновление мест - только для админов
+        Перенастроить зал (изменить количество рядов и мест)
+        POST /api/cinemas/halls/{id}/configure/
+        Только для администраторов
+        
+        Тело запроса:
+        {
+            "rows": 10,
+            "seats_per_row": 12
+        }
         """
         hall = self.get_object()
-        seat_ids = request.data.get('seat_ids', [])
-        seat_type = request.data.get('seat_type')
+        rows = request.data.get('rows')
+        seats_per_row = request.data.get('seats_per_row')
         
-        seats = Seat.objects.filter(id__in=seat_ids, hall=hall)
-        updated = seats.update(seat_type=seat_type)
+        if not rows or not seats_per_row:
+            return Response(
+                {'error': 'Необходимо указать rows и seats_per_row'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Обновляем зал
+            hall.rows = rows
+            hall.seats_per_row = seats_per_row
+            hall.save()
+            
+            # Удаляем старые места
+            Seat.objects.filter(hall=hall).delete()
+            
+            # Создаем новые места
+            seats = []
+            for row in range(1, rows + 1):
+                for number in range(1, seats_per_row + 1):
+                    seats.append(
+                        Seat(
+                            hall=hall,
+                            row=row,
+                            number=number,
+                            seat_type='standard'
+                        )
+                    )
+            Seat.objects.bulk_create(seats)
+            
+            return Response({
+                'success': True,
+                'message': 'Конфигурация зала обновлена',
+                'hall': {
+                    'id': hall.id,
+                    'name': hall.name,
+                    'rows': hall.rows,
+                    'seats_per_row': hall.seats_per_row,
+                    'total_seats': hall.total_seats
+                }
+            })
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
+    def toggle_active(self, request, pk=None):
+        """
+        Включить/выключить зал
+        POST /api/cinemas/halls/{id}/toggle_active/
+        Только для администраторов
+        """
+        hall = self.get_object()
+        hall.is_active = not hall.is_active
+        hall.save()
         
         return Response({
-            'message': f'Обновлено {updated} мест'
+            'success': True,
+            'is_active': hall.is_active,
+            'message': f'Зал {"активирован" if hall.is_active else "деактивирован"}'
         })
-
-class SeatViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet для управления местами
     
-    list: Все пользователи
-    retrieve: Все пользователи
-    create: Только админы
-    update: Только админы
-    partial_update: Только админы
-    destroy: Только админы
-    """
-    queryset = Seat.objects.all()
-    serializer_class = SeatSerializer
+    def create(self, request, *args, **kwargs):
+        """
+        Создание нового зала с автоматическим созданием мест
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        hall = serializer.save()
+        
+        # Возвращаем полную информацию о созданном зале
+        response_serializer = CinemaHallDetailSerializer(hall)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
     
-    def get_permissions(self):
-        """Динамическое определение прав доступа"""
-        if self.action in ['list', 'retrieve']:
-            # Просмотр доступен всем
-            permission_classes = [permissions.AllowAny]
-        else:
-            # Изменение только админам
-            permission_classes = [IsAdminUser]
+    def update(self, request, *args, **kwargs):
+        """
+        Обновление информации о зале
+        """
+        partial = kwargs.pop('partial', False)
+        hall = self.get_object()
+        serializer = self.get_serializer(hall, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
         
-        return [permission() for permission in permission_classes]
+        updated_hall = serializer.save()
+        
+        # Возвращаем обновленную информацию
+        response_serializer = CinemaHallDetailSerializer(updated_hall)
+        return Response(response_serializer.data)
     
-    def get_queryset(self):
-        """Фильтрация мест"""
-        queryset = super().get_queryset()
+    def destroy(self, request, *args, **kwargs):
+        """
+        Удаление зала (мягкое удаление - деактивация)
+        """
+        hall = self.get_object()
+        hall.is_active = False
+        hall.save()
         
-        # Все видят только активные места
-        queryset = queryset.filter(is_active=True)
-        
-        # Фильтр по залу
-        hall_id = self.request.query_params.get('hall')
-        if hall_id:
-            queryset = queryset.filter(hall_id=hall_id)
-        
-        return queryset
-    """
-    ViewSet для управления местами (только для админов)
-    """
-    queryset = Seat.objects.all()
-    serializer_class = SeatSerializer
-    permission_classes = [permissions.IsAdminUser]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['hall__name', 'row', 'number']
-    ordering_fields = ['hall', 'row', 'number', 'seat_type']
-    
-    def get_queryset(self):
-        """Фильтрация по параметрам запроса"""
-        queryset = super().get_queryset()
-        
-        # Фильтр по залу
-        hall_id = self.request.query_params.get('hall')
-        if hall_id:
-            queryset = queryset.filter(hall_id=hall_id)
-        
-        # Фильтр по типу
-        seat_type = self.request.query_params.get('type')
-        if seat_type:
-            queryset = queryset.filter(seat_type=seat_type)
-        
-        # Фильтр по ряду
-        row = self.request.query_params.get('row')
-        if row:
-            queryset = queryset.filter(row=row)
-        
-        # Фильтр по активности
-        is_active = self.request.query_params.get('is_active')
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
-        
-        return queryset.order_by('hall', 'row', 'number')
+        return Response(
+            {'message': 'Зал успешно деактивирован'},
+            status=status.HTTP_200_OK
+        )

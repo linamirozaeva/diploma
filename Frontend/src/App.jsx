@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 // Импорты публичных страниц
@@ -10,7 +10,7 @@ import PaymentPage from './pages/public/PaymentPage';
 import TicketPage from './pages/public/TicketPage';
 import LoginPage from './pages/public/LoginPage';
 import RegisterPage from './pages/public/RegisterPage';
-import MyTicketsPage from './pages/public/MyTicketsPage';  // ← ДОБАВЛЕНО!
+import MyTicketsPage from './pages/public/MyTicketsPage';
 
 // Импорты админ-страниц
 import AdminLayout from './pages/admin/AdminLayout';
@@ -22,6 +22,26 @@ import AdminBookings from './pages/admin/AdminBookings';
 
 // Компонент Header
 import Header from './components/layout/Header';
+
+// Компонент для управления классами body (упрощенная версия)
+const BodyClassManager = ({ children }) => {
+  const location = useLocation();
+  
+  useEffect(() => {
+    document.body.classList.remove('admin-page');
+    
+    if (location.pathname.startsWith('/admin')) {
+      document.body.classList.add('admin-page');
+      console.log('Applied admin-page class');
+    }
+    
+    return () => {
+      document.body.classList.remove('admin-page');
+    };
+  }, [location]);
+  
+  return children;
+};
 
 // Компонент для защиты маршрутов
 const PrivateRoute = ({ children, adminOnly = false }) => {
@@ -51,7 +71,6 @@ function AppRoutes() {
       <Route path="/" element={<><Header /><HomePage /></>} />
       <Route path="/movie/:id" element={<><Header /><MoviePage /></>} />
       <Route path="/hall/:screeningId" element={<><Header /><HallPage /></>} />
-      <Route path="/movies" element={<Navigate to="/" replace />} />
       
       {/* Маршруты для авторизованных пользователей */}
       <Route path="/payment" element={
@@ -66,7 +85,7 @@ function AppRoutes() {
       } />
       <Route path="/my-tickets" element={
         <PrivateRoute>
-          <><Header /><MyTicketsPage /></>  {/* ← ТЕПЕРЬ РАБОТАЕТ! */}
+          <><Header /><MyTicketsPage /></>
         </PrivateRoute>
       } />
       
@@ -74,7 +93,7 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       
-      {/* Админ маршруты (только для админов) */}
+      {/* Админ маршруты */}
       <Route path="/admin" element={
         <PrivateRoute adminOnly>
           <AdminLayout />
@@ -94,9 +113,11 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <div className="min-h-screen">
-          <AppRoutes />
-        </div>
+        <BodyClassManager>
+          <div className="min-h-screen">
+            <AppRoutes />
+          </div>
+        </BodyClassManager>
       </AuthProvider>
     </Router>
   );

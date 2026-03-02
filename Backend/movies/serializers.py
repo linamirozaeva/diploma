@@ -1,49 +1,60 @@
 from rest_framework import serializers
 from .models import Movie
-from .validators import MovieValidator
 
 class MovieListSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для списка фильмов
+    """
+    poster_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = Movie
-        fields = ['id', 'title', 'description', 'duration', 'poster', 'release_date', 'director']
+        fields = [
+            'id', 'title', 'description', 'duration', 
+            'poster_url', 'age_rating', 'is_active', 'release_date', 'country'
+        ]
+    
+    def get_poster_url(self, obj):
+        if obj.poster and hasattr(obj.poster, 'url'):
+            return obj.poster.url
+        return None
 
 class MovieDetailSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для детальной информации о фильме
+    """
+    poster_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = Movie
-        fields = ['id', 'title', 'description', 'duration', 'poster', 'release_date', 
-                  'director', 'cast', 'is_active', 'created_at', 'updated_at']
+        fields = [
+            'id', 'title', 'description', 'duration', 'release_date', 
+            'poster_url', 'country', 'director', 'cast', 'age_rating', 
+            'trailer_url', 'is_active', 'created_at', 'updated_at'
+        ]
+    
+    def get_poster_url(self, obj):
+        if obj.poster and hasattr(obj.poster, 'url'):
+            return obj.poster.url
+        return None
 
 class MovieCreateUpdateSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для создания и обновления фильмов
+    """
     class Meta:
         model = Movie
-        fields = ['id', 'title', 'description', 'duration', 'poster', 'release_date', 
-                  'director', 'cast', 'is_active']
-        read_only_fields = ['id']
-    
-    def validate_title(self, value):
-        """
-        Валидация названия
-        """
-        title_errors = MovieValidator.validate_title(value)
-        if title_errors:
-            raise serializers.ValidationError(title_errors['title'])
-        return value
+        fields = [
+            'title', 'description', 'duration', 'release_date', 
+            'poster', 'country', 'director', 'cast', 'age_rating', 
+            'trailer_url', 'is_active'
+        ]
     
     def validate_duration(self, value):
-        """
-        Валидация длительности
-        """
-        duration_errors = MovieValidator.validate_movie_duration(value)
-        if duration_errors:
-            raise serializers.ValidationError(duration_errors['duration'])
+        """Проверка длительности фильма"""
+        if value < 1 or value > 300:
+            raise serializers.ValidationError("Длительность должна быть от 1 до 300 минут")
         return value
-    
-    def validate_release_date(self, value):
-        """
-        Валидация даты выхода
-        """
-        if value:
-            date_errors = MovieValidator.validate_release_date(value)
-            if date_errors:
-                raise serializers.ValidationError(date_errors['release_date'])
-        return value
+
+# Алиас для обратной совместимости
+MovieSerializer = MovieListSerializer

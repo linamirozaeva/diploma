@@ -3,7 +3,13 @@ import api from '../services/api';
 
 const AuthContext = createContext();
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -16,12 +22,21 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuth = async () => {
     const token = localStorage.getItem('access_token');
+    console.log('Token from localStorage:', token);
+    
     if (token) {
       try {
         const response = await api.get('/auth/me/');
+        console.log('User data from API:', response.data);
+        
         setUser(response.data);
         setIsAuthenticated(true);
+        
+        const isUserAdmin = response.data?.user_type === 'admin' || response.data?.is_staff || false;
+        console.log('Is user admin?', isUserAdmin);
+        
       } catch (error) {
+        console.error('Auth check failed:', error);
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
       }
@@ -36,12 +51,15 @@ export const AuthProvider = ({ children }) => {
         password,
       });
       
+      console.log('Login response:', response.data); // Проверка токенов
+      
       localStorage.setItem('access_token', response.data.access);
       localStorage.setItem('refresh_token', response.data.refresh);
       
       await checkAuth();
       return { success: true };
     } catch (error) {
+      console.error('Login error:', error.response?.data);
       return { 
         success: false, 
         error: error.response?.data?.detail || 'Ошибка входа' 
@@ -69,6 +87,10 @@ export const AuthProvider = ({ children }) => {
     window.location.href = '/';
   };
 
+  const isAdmin = user?.user_type === 'admin' || user?.is_staff || false;
+
+  console.log('AuthProvider state:', { user, isAuthenticated, isAdmin, loading }); // Общий лог
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -77,7 +99,7 @@ export const AuthProvider = ({ children }) => {
       login,
       register,
       logout,
-      isAdmin: user?.user_type === 'admin' || user?.is_staff,
+      isAdmin,
     }}>
       {children}
     </AuthContext.Provider>

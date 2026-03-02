@@ -6,15 +6,15 @@ const Notification = ({ message, type, onClose }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsVisible(false);
-      setTimeout(onClose, 300); // Даем время на анимацию
+      setTimeout(onClose, 300);
     }, 5000);
     return () => clearTimeout(timer);
   }, [onClose]);
 
   if (!isVisible) return null;
 
-  const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
-  const icon = type === 'success' ? 'yes' : 'no';
+  const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+  const icon = type === 'success' ? 'yes' : type === 'error' ? 'no' : 'i';
 
   return (
     <div className={`fixed top-4 right-4 ${bgColor} text-white px-6 py-4 rounded-lg shadow-lg z-50 
@@ -23,6 +23,7 @@ const Notification = ({ message, type, onClose }) => {
         <span className="text-xl">{icon}</span>
         <span className="font-medium">{message}</span>
         <button onClick={() => setIsVisible(false)} className="ml-4 text-white hover:text-gray-200">
+          ✕
         </button>
       </div>
     </div>

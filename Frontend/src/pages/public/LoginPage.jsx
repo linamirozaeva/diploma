@@ -22,13 +22,13 @@ const LoginPage = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-cover bg-center" 
-         style={{backgroundImage: 'url(/src/assets/background.jpg)'}}>
+         style={{backgroundImage: 'url(/src/assets/background_client.jpg)'}}>
       <div className="bg-white bg-opacity-95 p-8 rounded-lg w-96">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-black uppercase text-secondary">
             Идём<span className="font-thin">в</span>кино
           </h1>
-          <p className="text-sm tracking-widest text-gray-600 mt-2">Администраторррская</p>
+          <p className="text-sm tracking-widest text-gray-600 mt-2">Вход в систему</p>
         </div>
         
         <h2 className="text-2xl font-bold text-secondary mb-6 text-center">Авторизация</h2>
@@ -41,10 +41,11 @@ const LoginPage = () => {
           )}
           
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
               Имя пользователя
             </label>
             <input
+              id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -54,10 +55,11 @@ const LoginPage = () => {
           </div>
           
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
               Пароль
             </label>
             <input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

@@ -1,65 +1,36 @@
 from rest_framework import serializers
 from .models import CinemaHall, Seat
-from .validators import CinemaHallValidator, SeatValidator
 
 class SeatSerializer(serializers.ModelSerializer):
     """
-    Сериализатор для мест в кинозале
+    Сериализатор для мест в зале
     """
     class Meta:
         model = Seat
-        fields = ('id', 'row', 'number', 'seat_type', 'is_active')  # Добавлен id
-        read_only_fields = ('id',)
+        fields = ['id', 'row', 'number', 'seat_type', 'is_active']
 
-class CinemaHallListSerializer(serializers.ModelSerializer):
+class CinemaHallSerializer(serializers.ModelSerializer):
     """
-    Сериализатор для списка кинозалов
-    """
-    total_seats = serializers.IntegerField(read_only=True)
-    
-    class Meta:
-        model = CinemaHall
-        fields = ('id', 'name', 'rows', 'seats_per_row', 'total_seats', 'is_active', 'description')
-        # ID добавлен
-
-class CinemaHallDetailSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор для детальной информации о кинозале
+    Сериализатор для просмотра залов
     """
     seats = SeatSerializer(many=True, read_only=True)
     total_seats = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = CinemaHall
-        fields = ('id', 'name', 'rows', 'seats_per_row', 'description', 'is_active', 
-                  'total_seats', 'seats', 'created_at', 'updated_at')
-        # ID добавлен
+        fields = [
+            'id', 'name', 'rows', 'seats_per_row', 'description', 
+            'is_active', 'total_seats', 'seats', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
 
 class CinemaHallCreateSerializer(serializers.ModelSerializer):
     """
-    Сериализатор для создания кинозала
+    Сериализатор для создания зала (автоматически создает места)
     """
     class Meta:
         model = CinemaHall
-        fields = ('id', 'name', 'rows', 'seats_per_row', 'description')  # Добавлен id
-        read_only_fields = ('id', 'created_at', 'updated_at')  # ID только для чтения
-    
-    def validate(self, data):
-        # Проверка размеров зала
-        dimension_errors = CinemaHallValidator.validate_hall_dimensions(
-            rows=data['rows'],
-            seats_per_row=data['seats_per_row']
-        )
-        if dimension_errors:
-            raise serializers.ValidationError(dimension_errors)
-        
-        # Проверка уникальности имени зала
-        if CinemaHall.objects.filter(name=data['name']).exists():
-            raise serializers.ValidationError({
-                "name": "Зал с таким названием уже существует"
-            })
-        
-        return data
+        fields = ['name', 'rows', 'seats_per_row', 'description']
     
     def create(self, validated_data):
         # Создаем зал
@@ -77,11 +48,23 @@ class CinemaHallCreateSerializer(serializers.ModelSerializer):
                         seat_type='standard'
                     )
                 )
-        
-        if seats:
-            Seat.objects.bulk_create(seats)
+        Seat.objects.bulk_create(seats)
         
         return hall
+
+class CinemaHallDetailSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для детальной информации о зале
+    """
+    seats = SeatSerializer(many=True, read_only=True)
+    total_seats = serializers.IntegerField(read_only=True)
+    
+    class Meta:
+        model = CinemaHall
+        fields = [
+            'id', 'name', 'rows', 'seats_per_row', 'description',
+            'is_active', 'total_seats', 'seats', 'created_at', 'updated_at'
+        ]
 
 class SeatUpdateSerializer(serializers.ModelSerializer):
     """
